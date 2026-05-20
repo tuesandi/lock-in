@@ -1,0 +1,106 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Mein Assistent</title>
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+
+<header>
+  <div class="header-inner">
+    <h1>Mein Assistent</h1>
+    <span id="current-date" class="date-badge"></span>
+    <a href="/food-upload" class="header-link">Foto scannen</a>
+  </div>
+</header>
+
+<main>
+
+  <!-- ── Kalorien ─────────────────────────────────────────────────────── -->
+  <section class="card" id="calorie-section">
+    <div class="card-header">
+      <h2>Kalorien</h2>
+      <div class="goal-edit">
+        <span>Ziel</span>
+        <input type="number" id="calorie-goal-input" min="0" step="50">
+        <span>kcal</span>
+        <button class="btn-confirm" id="save-goal-btn" title="Speichern">&#10003;</button>
+      </div>
+    </div>
+
+    <div class="progress-section">
+      <div class="calorie-stats">
+        <div class="stat">
+          <span class="stat-value" id="calories-consumed">0</span>
+          <span class="stat-label">gegessen</span>
+        </div>
+        <div class="divider"></div>
+        <div class="stat">
+          <span class="stat-value secondary" id="calories-remaining">0</span>
+          <span class="stat-label" id="remaining-label">verbleibend</span>
+        </div>
+      </div>
+      <div class="progress-wrap">
+        <div class="progress-bar" id="calorie-progress"></div>
+      </div>
+    </div>
+
+    <form class="add-form" id="calorie-form">
+      <input type="text" id="food-description" placeholder="Mahlzeit / Snack" autocomplete="off" required>
+      <input type="number" id="food-calories" placeholder="kcal" min="1" required>
+      <button type="submit" class="btn-add">+</button>
+    </form>
+
+    <ul class="item-list" id="calorie-entries">
+      <li class="empty-hint">Noch keine Einträge heute.</li>
+    </ul>
+  </section>
+
+  <!-- ── To-Dos ────────────────────────────────────────────────────────── -->
+  <section class="card">
+    <div class="card-header">
+      <h2>To-Dos</h2>
+      <span class="badge" id="todo-count">0 offen</span>
+    </div>
+
+    <form class="add-form" id="todo-form">
+      <input type="text" id="todo-title" placeholder="Neue Aufgabe..." autocomplete="off" required>
+      <input type="date" id="todo-due-date">
+      <button type="submit" class="btn-add">+</button>
+    </form>
+
+    <ul class="item-list" id="todo-list">
+      <li class="empty-hint">Keine Aufgaben. Gut gemacht!</li>
+    </ul>
+  </section>
+
+  <!-- ── Termine ───────────────────────────────────────────────────────── -->
+  <section class="card">
+    <div class="card-header">
+      <h2>Termine</h2>
+      <span class="badge" id="termin-count">0 heute</span>
+    </div>
+
+    <form id="termin-form">
+      <div class="add-form">
+        <input type="text" id="termin-title" placeholder="Termin..." autocomplete="off" required>
+        <button type="submit" class="btn-add">+</button>
+      </div>
+      <div class="termin-meta">
+        <input type="time" id="termin-time">
+        <input type="date" id="termin-date">
+      </div>
+    </form>
+
+    <ul class="item-list" id="termin-list">
+      <li class="empty-hint">Keine Termine heute.</li>
+    </ul>
+  </section>
+
+</main>
+
+<script src="/static/app.js"></script>
+</body>
+</html>
