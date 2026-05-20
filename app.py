@@ -4,15 +4,70 @@ import psycopg2.extras
 from datetime import date, datetime
 import os
 import re
+import atexit
 import anthropic
 import requests
 import feedparser
 from dotenv import load_dotenv
+from apscheduler.schedulers.background import BackgroundScheduler
 
 load_dotenv()
 
 app = Flask(__name__)
 
+
+# ── Pushover ──────────────────────────────────────────────────────────────────
+
+def send_push_notification(title, message):
+    user_key = os.environ.get("PUSHOVER_USER_KEY", "").strip()
+    api_token = os.environ.get("PUSHOVER_API_TOKEN", "").strip()
+    if not user_key or not api_token:
+        return
+    try:
+        requests.post(
+            "https://api.pushover.net/1/messages.json",
+            data={"token": api_token, "user": user_key, "title": title, "message": message},
+            timeout=5,
+        )
+    except Exception:
+        pass
+
+
+def daily_reminder():
+    today = date.today().isoformat()
+    try:
+        conn = get_db()
+        cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+        cur.execute(
+            "SELECT title, time FROM termine WHERE date = %s ORDER BY time IS NULL, time ASC",
+            (today,),
+        )
+        termine = cur.fetchall()
+        cur.execute(
+            "SELECT title FROM todos WHERE completed = 0 AND (due_date IS NULL OR due_date <= %s) ORDER BY due_date ASC",
+            (today,),
+        )
+        todos = cur.fetchall()
+        cur.close()
+        conn.close()
+    except Exception:
+        return
+
+    parts = []
+    if termine:
+        parts.append("Termine: " + ", ".join(
+            f"{r['time'] or '?'} Uhr – {r['title']}" for r in termine
+        ))
+    if todos:
+        parts.append("To-Dos: " + ", ".join(r["title"] for r in todos[:5]))
+
+    if parts:
+        send_push_notification("Tagesübersicht", " | ".join(parts))
+    else:
+        send_push_notification("Guten Morgen, Andreas!", "Heute keine Termine oder offenen To-Dos.")
+
+
+# ── Database ──────────────────────────────────────────────────────────────────
 
 def get_db():
     return psycopg2.connect(os.environ.get("DATABASE_URL", ""))
@@ -110,6 +165,10 @@ def create_todo():
     row = cur.fetchone()
     cur.close()
     conn.close()
+    send_push_notification(
+        "Neues To-Do",
+        f"{title}" + (f" (fällig: {due_date})" if due_date else ""),
+    )
     return jsonify(dict(row)), 201
 
 
@@ -469,6 +528,11 @@ Erstelle aus diesen Daten ein kurzes, flüssig geschriebenes, motivierendes Audi
 
 
 # ── Startup ───────────────────────────────────────────────────────────────────
+
+scheduler = BackgroundScheduler(timezone="Europe/Zurich")
+scheduler.add_job(daily_reminder, "cron", hour=8, minute=0)
+scheduler.start()
+atexit.register(lambda: scheduler.shutdown())
 
 init_db()
 
