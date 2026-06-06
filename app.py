@@ -527,6 +527,52 @@ Erstelle aus diesen Daten ein kurzes, flüssig geschriebenes, motivierendes Audi
     return briefing, 200, {"Content-Type": "text/plain; charset=utf-8"}
 
 
+# ── Cron Daily Summary ────────────────────────────────────────────────────────
+
+@app.route("/api/cron-daily-summary", methods=["GET", "POST"])
+def cron_daily_summary():
+    today = date.today().isoformat()
+    try:
+        conn = get_db()
+        cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+        cur.execute(
+            "SELECT title, time FROM termine WHERE date = %s ORDER BY time IS NULL, time ASC",
+            (today,),
+        )
+        termine = cur.fetchall()
+        cur.execute(
+            "SELECT title FROM todos WHERE completed = 0 AND (due_date IS NULL OR due_date <= %s) ORDER BY due_date ASC",
+            (today,),
+        )
+        todos = cur.fetchall()
+        cur.close()
+        conn.close()
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+    if not termine and not todos:
+        send_push_notification(
+            "Deine Mittags-Übersicht 🕒",
+            "Alles erledigt – keine offenen To-Dos oder Termine für heute. 🎉",
+        )
+        return jsonify({"sent": True, "termine": 0, "todos": 0})
+
+    lines = []
+    if termine:
+        lines.append("📅 Termine heute:")
+        for r in termine:
+            t = r["time"] or "?"
+            lines.append(f"  • {t} Uhr – {r['title']}")
+    if todos:
+        lines.append("✅ Offene To-Dos:")
+        for r in todos[:10]:
+            lines.append(f"  • {r['title']}")
+
+    message = "\n".join(lines)
+    send_push_notification("Deine Mittags-Übersicht 🕒", message)
+    return jsonify({"sent": True, "termine": len(termine), "todos": len(todos), "message": message})
+
+
 # ── Startup ───────────────────────────────────────────────────────────────────
 
 scheduler = BackgroundScheduler(timezone="Europe/Zurich")
