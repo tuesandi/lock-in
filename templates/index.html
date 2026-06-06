@@ -2,31 +2,31 @@
 <html lang="de">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Mein Assistent</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <title>Lock In</title>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/fullcalendar@6.1.15/index.global.min.css">
   <link rel="stylesheet" href="/static/style.css">
 </head>
 <body>
 
 <header>
   <div class="header-inner">
-    <h1>Mein Assistent</h1>
+    <h1>Lock In</h1>
     <span id="current-date" class="date-badge"></span>
-    <a href="/food-upload" class="header-link">Foto scannen</a>
+    <a href="/food-upload" class="header-link">📷 Scannen</a>
   </div>
 </header>
 
 <main>
 
-  <!-- ── Kalorien ─────────────────────────────────────────────────────── -->
+  <!-- Kalorien -->
   <section class="card" id="calorie-section">
     <div class="card-header">
       <h2>Kalorien</h2>
       <div class="goal-edit">
-        <span>Ziel</span>
-        <input type="number" id="calorie-goal-input" min="0" step="50">
+        <input type="number" id="calorie-goal-input" min="0" step="50" aria-label="Kalorienziel">
         <span>kcal</span>
-        <button class="btn-confirm" id="save-goal-btn" title="Speichern">&#10003;</button>
+        <button class="btn-icon" id="save-goal-btn" title="Speichern">✓</button>
       </div>
     </div>
 
@@ -58,8 +58,8 @@
     </ul>
   </section>
 
-  <!-- ── To-Dos ────────────────────────────────────────────────────────── -->
-  <section class="card">
+  <!-- To-Dos -->
+  <section class="card" id="todo-section">
     <div class="card-header">
       <h2>To-Dos</h2>
       <span class="badge" id="todo-count">0 offen</span>
@@ -76,31 +76,51 @@
     </ul>
   </section>
 
-  <!-- ── Termine ───────────────────────────────────────────────────────── -->
-  <section class="card">
+  <!-- Termine -->
+  <section class="card" id="termine-section">
     <div class="card-header">
       <h2>Termine</h2>
       <span class="badge" id="termin-count">0 heute</span>
     </div>
 
-    <form id="termin-form">
-      <div class="add-form">
-        <input type="text" id="termin-title" placeholder="Termin..." autocomplete="off" required>
-        <button type="submit" class="btn-add">+</button>
-      </div>
-      <div class="termin-meta">
-        <input type="time" id="termin-time">
-        <input type="date" id="termin-date">
-      </div>
-    </form>
+    <div id="termine-calendar"></div>
 
-    <ul class="item-list" id="termin-list">
-      <li class="empty-hint">Keine Termine heute.</li>
-    </ul>
+    <div class="day-panel">
+      <div class="day-panel-header">
+        <span class="day-panel-title" id="day-panel-title">Heute</span>
+      </div>
+
+      <form class="add-form" id="termin-form">
+        <input type="text" id="termin-title" placeholder="Termin hinzufügen..." autocomplete="off" required>
+        <input type="time" id="termin-time">
+        <button type="submit" class="btn-add">+</button>
+      </form>
+
+      <ul class="item-list" id="termin-list">
+        <li class="empty-hint">Keine Termine an diesem Tag.</li>
+      </ul>
+    </div>
   </section>
 
 </main>
 
+<!-- Mobile Bottom Navigation -->
+<nav class="bottom-nav" aria-label="Navigation">
+  <a href="#calorie-section" class="bnav-item">
+    <span class="bnav-icon">🍎</span>
+    <span class="bnav-label">Kalorien</span>
+  </a>
+  <a href="#todo-section" class="bnav-item">
+    <span class="bnav-icon">✅</span>
+    <span class="bnav-label">To-Dos</span>
+  </a>
+  <a href="#termine-section" class="bnav-item">
+    <span class="bnav-icon">📅</span>
+    <span class="bnav-label">Termine</span>
+  </a>
+</nav>
+
+<script src="https://cdn.jsdelivr.net/npm/fullcalendar@6.1.15/index.global.min.js"></script>
 <script src="/static/app.js"></script>
 </body>
 </html>

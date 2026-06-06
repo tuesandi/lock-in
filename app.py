@@ -343,6 +343,22 @@ def delete_termin(termin_id):
     return "", 204
 
 
+@app.route("/api/termine/range", methods=["GET"])
+def get_termine_range():
+    start = request.args.get("start", date.today().isoformat())
+    end   = request.args.get("end",   date.today().isoformat())
+    conn = get_db()
+    cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+    cur.execute(
+        "SELECT * FROM termine WHERE date >= %s AND date < %s ORDER BY date ASC, time IS NULL, time ASC",
+        (start, end),
+    )
+    rows = cur.fetchall()
+    cur.close()
+    conn.close()
+    return jsonify([dict(r) for r in rows])
+
+
 # ── Food analysis ─────────────────────────────────────────────────────────────
 
 ALLOWED_MIME = {"image/jpeg", "image/png", "image/gif", "image/webp"}

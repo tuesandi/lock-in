@@ -2,7 +2,6 @@
 
 const today = new Date().toISOString().split("T")[0];
 
-// Date display
 document.getElementById("current-date").textContent = new Date().toLocaleDateString("de-DE", {
   weekday: "long", year: "numeric", month: "long", day: "numeric",
 });
@@ -70,7 +69,7 @@ function renderEntries() {
     <li class="entry-item">
       <span class="entry-desc">${esc(e.description)}</span>
       <span class="entry-kcal">${e.calories} kcal</span>
-      <button class="del-btn" data-id="${e.id}" title="Löschen">&#10005;</button>
+      <button class="del-btn" data-id="${e.id}" title="Löschen">✕</button>
     </li>`
     )
     .join("");
@@ -148,7 +147,7 @@ function renderTodos() {
         <input type="checkbox" ${t.completed ? "checked" : ""}>
         <span class="todo-title">${esc(t.title)}</span>
         ${due}
-        <button class="del-btn" title="Löschen">&#10005;</button>
+        <button class="del-btn" title="Löschen">✕</button>
       </li>`;
     })
     .join("");
@@ -188,35 +187,61 @@ async function deleteTodo(id) {
   await loadTodos();
 }
 
-// ── Termine ───────────────────────────────────────────────────────────────────
+// ── Termine (FullCalendar) ────────────────────────────────────────────────────
 
-let termine = [];
+let selectedDate = today;
+let calendar;
 
-async function loadTermine() {
-  termine = await api(`/api/termine?date=${today}`);
-  renderTermine();
+function formatDayTitle(dateStr) {
+  const d = new Date(dateStr + "T12:00:00");
+  if (dateStr === today) return "Heute";
+  return d.toLocaleDateString("de-DE", { weekday: "long", day: "numeric", month: "long" });
 }
 
-function renderTermine() {
-  document.getElementById("termin-count").textContent = `${termine.length} heute`;
+function selectDay(dateStr) {
+  selectedDate = dateStr;
+
+  // Remove previous highlight
+  document.querySelectorAll(".fc-day-selected").forEach((el) =>
+    el.classList.remove("fc-day-selected")
+  );
+  // Add highlight to clicked day cell
+  const dayEl = document.querySelector(`[data-date="${dateStr}"]`);
+  if (dayEl) dayEl.classList.add("fc-day-selected");
+
+  document.getElementById("day-panel-title").textContent = formatDayTitle(dateStr);
+  loadTermineForDate(dateStr);
+}
+
+async function loadTermineForDate(dateStr) {
+  const rows = await api(`/api/termine?date=${dateStr}`);
+  renderTermine(rows);
+
+  if (dateStr === today) {
+    document.getElementById("termin-count").textContent = `${rows.length} heute`;
+  }
+}
+
+function renderTermine(data) {
   const list = document.getElementById("termin-list");
-  if (!termine.length) {
-    list.innerHTML = '<li class="empty-hint">Keine Termine heute.</li>';
+  if (!data.length) {
+    list.innerHTML = '<li class="empty-hint">Keine Termine an diesem Tag.</li>';
     return;
   }
-  list.innerHTML = termine
+  list.innerHTML = data
     .map((t) => {
       const time = t.time
         ? `<span class="termin-time">${esc(t.time)}</span>`
-        : `<span class="termin-time" style="opacity:.3">--:--</span>`;
+        : `<span class="termin-time" style="opacity:.3">––</span>`;
       return `
       <li class="termin-item">
         ${time}
         <span class="termin-title">${esc(t.title)}</span>
-        <button class="del-btn" data-id="${t.id}" title="Löschen">&#10005;</button>
+        <button class="del-btn" data-id="${t.id}" title="Löschen">✕</button>
       </li>`;
     })
     .join("");
+
   list.querySelectorAll(".del-btn").forEach((btn) =>
     btn.addEventListener("click", () => deleteTermin(+btn.dataset.id))
   );
@@ -226,26 +251,74 @@ document.getElementById("termin-form").addEventListener("submit", async (e) => {
   e.preventDefault();
   const title = document.getElementById("termin-title").value.trim();
   const time = document.getElementById("termin-time").value || null;
-  const date = document.getElementById("termin-date").value || today;
   if (!title) return;
   await api("/api/termine", {
     method: "POST",
-    body: JSON.stringify({ title, time, date }),
+    body: JSON.stringify({ title, time, date: selectedDate }),
   });
   document.getElementById("termin-title").value = "";
   document.getElementById("termin-time").value = "";
-  document.getElementById("termin-date").value = today;
-  await loadTermine();
+  calendar.refetchEvents();
+  await loadTermineForDate(selectedDate);
 });
 
 async function deleteTermin(id) {
   await api(`/api/termine/${id}`, { method: "DELETE" });
-  await loadTermine();
+  calendar.refetchEvents();
+  await loadTermineForDate(selectedDate);
+}
+
+function initCalendar() {
+  const el = document.getElementById("termine-calendar");
+
+  calendar = new FullCalendar.Calendar(el, {
+    initialView: "dayGridMonth",
+    locale: "de",
+    height: "auto",
+    firstDay: 1,
+    headerToolbar: {
+      left: "prev",
+      center: "title",
+      right: "next today",
+    },
+    events: async function (fetchInfo, successCallback, failureCallback) {
+      try {
+        const start = fetchInfo.startStr.slice(0, 10);
+        const end   = fetchInfo.endStr.slice(0, 10);
+        const rows  = await api(`/api/termine/range?start=${start}&end=${end}`);
+        const events = rows.map((t) => ({
+          id: String(t.id),
+          title: t.title,
+          start: t.time ? `${t.date}T${t.time}:00` : t.date,
+          allDay: !t.time,
+          extendedProps: { dbId: t.id },
+        }));
+        successCallback(events);
+      } catch (err) {
+        failureCallback(err);
+      }
+    },
+    dateClick: function (info) {
+      selectDay(info.dateStr);
+    },
+    eventClick: function (info) {
+      info.jsEvent.preventDefault();
+      selectDay(info.event.startStr.slice(0, 10));
+    },
+    // Re-apply selected day highlight after calendar re-render
+    datesSet: function () {
+      const dayEl = document.querySelector(`[data-date="${selectedDate}"]`);
+      if (dayEl) dayEl.classList.add("fc-day-selected");
+    },
+  });
+
+  calendar.render();
+  selectDay(today);
 }
 
 // ── Init ──────────────────────────────────────────────────────────────────────
 
 (async () => {
-  document.getElementById("termin-date").value = today;
-  await Promise.all([loadGoal(), loadEntries(), loadTodos(), loadTermine()]);
+  await Promise.all([loadGoal(), loadEntries(), loadTodos()]);
+  initCalendar();
 })();
