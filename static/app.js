@@ -30,20 +30,40 @@ let calorieGoal = 2500;
 let entries = [];
 
 async function loadGoal() {
-  const data = await api("/api/calories/goal");
-  calorieGoal = data.goal;
-  document.getElementById("calorie-goal-input").value = calorieGoal;
+  // Show localStorage value immediately to avoid flicker on slow connections
+  const cached = parseInt(localStorage.getItem("calorieGoal") || "0", 10);
+  if (cached > 0) {
+    calorieGoal = cached;
+    document.getElementById("calorie-goal-input").value = calorieGoal;
+  }
+
+  try {
+    const data = await api("/api/calories/goal");
+    if (data && data.goal) {
+      calorieGoal = data.goal;
+      document.getElementById("calorie-goal-input").value = calorieGoal;
+      localStorage.setItem("calorieGoal", String(calorieGoal));
+    }
+  } catch {
+    // Network failed — keep localStorage value
+  }
 }
 
 async function saveGoal() {
   const val = parseInt(document.getElementById("calorie-goal-input").value, 10);
   if (!val || val < 0) return;
-  await api("/api/calories/goal", {
-    method: "PUT",
-    body: JSON.stringify({ goal: val }),
-  });
+  // Persist locally first so a reload always shows the correct value
+  localStorage.setItem("calorieGoal", String(val));
   calorieGoal = val;
   updateProgress();
+  try {
+    await api("/api/calories/goal", {
+      method: "PUT",
+      body: JSON.stringify({ goal: val }),
+    });
+  } catch {
+    // DB sync failed; localStorage already updated as backup
+  }
 }
 
 document.getElementById("save-goal-btn").addEventListener("click", saveGoal);
