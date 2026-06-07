@@ -359,6 +359,45 @@ def get_termine_range():
     return jsonify([dict(r) for r in rows])
 
 
+# ── Widget Endpoints (unprotected, for Scriptable iPhone widgets) ─────────────
+
+@app.route("/api/widget-todos", methods=["GET"])
+def widget_todos():
+    conn = get_db()
+    cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+    cur.execute(
+        """SELECT id, title, due_date FROM todos
+           WHERE completed = 0
+           ORDER BY due_date ASC NULLS LAST, created_at ASC
+           LIMIT 4"""
+    )
+    rows = cur.fetchall()
+    cur.close()
+    conn.close()
+    return jsonify([dict(r) for r in rows])
+
+
+@app.route("/api/widget-calendar", methods=["GET"])
+def widget_calendar():
+    now = datetime.now()
+    today = now.date().isoformat()
+    current_time = now.strftime("%H:%M")
+    conn = get_db()
+    cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+    cur.execute(
+        """SELECT id, title, date, time FROM termine
+           WHERE date > %s
+              OR (date = %s AND (time IS NULL OR time >= %s))
+           ORDER BY date ASC, time IS NULL, time ASC
+           LIMIT 3""",
+        (today, today, current_time),
+    )
+    rows = cur.fetchall()
+    cur.close()
+    conn.close()
+    return jsonify([dict(r) for r in rows])
+
+
 # ── Food analysis ─────────────────────────────────────────────────────────────
 
 ALLOWED_MIME = {"image/jpeg", "image/png", "image/gif", "image/webp"}
