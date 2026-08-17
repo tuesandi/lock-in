@@ -491,6 +491,23 @@ function renderAnalysis(text) {
     .join("");
 }
 
+// ── Tab Navigation ────────────────────────────────────────────────────────────
+
+document.querySelectorAll(".tab-btn").forEach((btn) => {
+  btn.addEventListener("click", () => {
+    document.querySelectorAll(".tab-btn").forEach((b) => b.classList.remove("active"));
+    document.querySelectorAll(".tab-pane").forEach((p) => p.classList.remove("active"));
+    btn.classList.add("active");
+    const pane = document.getElementById("tab-" + btn.dataset.tab);
+    if (pane) pane.classList.add("active");
+    if (btn.dataset.tab === "planer" && typeof calendar !== "undefined" && calendar) {
+      setTimeout(() => calendar.updateSize(), 50);
+    }
+  });
+});
+
+// ── Portfolio Analyze ──────────────────────────────────────────────────────────
+
 document.getElementById("analyze-btn").addEventListener("click", async () => {
   const btn = document.getElementById("analyze-btn");
   const box = document.getElementById("analysis-box");
@@ -524,6 +541,35 @@ document.getElementById("analyze-btn").addEventListener("click", async () => {
   } finally {
     btn.disabled = false;
     btn.textContent = "Portfolio jetzt analysieren 🧠";
+  }
+});
+
+// ── Discover New Investments ──────────────────────────────────────────────────
+
+document.getElementById("discover-btn").addEventListener("click", async () => {
+  const btn = document.getElementById("discover-btn");
+  const box = document.getElementById("discover-box");
+  const content = document.getElementById("discover-content");
+
+  btn.disabled = true;
+  btn.textContent = "Suche… ⏳";
+  box.style.display = "block";
+  content.innerHTML =
+    '<div class="analysis-loading">KI analysiert Diversifikation und sucht passende Anlagen…<br>Einen Moment bitte.</div>';
+  box.scrollIntoView({ behavior: "smooth", block: "nearest" });
+
+  try {
+    const result = await api("/api/finance/recommend_investments", { method: "POST" });
+    if (result.error) {
+      content.innerHTML = `<div class="analysis-error">${esc(result.error)}</div>`;
+    } else {
+      content.innerHTML = renderAnalysis(result.recommendations);
+    }
+  } catch (err) {
+    content.innerHTML = `<div class="analysis-error">Netzwerkfehler: ${esc(err.message)}</div>`;
+  } finally {
+    btn.disabled = false;
+    btn.textContent = "Neue Anlagen entdecken 🔍";
   }
 });
 

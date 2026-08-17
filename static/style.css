@@ -21,7 +21,6 @@ html { scroll-behavior: smooth; }
   --shadow:        0 4px 8px rgba(0,0,0,.5), 0 12px 32px rgba(0,0,0,.35);
   --radius:        16px;
   --radius-sm:     10px;
-  --bnav-h:        64px;
 }
 
 body {
@@ -29,7 +28,7 @@ body {
   background: var(--bg);
   color: var(--text);
   min-height: 100vh;
-  padding-bottom: calc(var(--bnav-h) + env(safe-area-inset-bottom, 0px));
+  padding-bottom: env(safe-area-inset-bottom, 0px);
 }
 
 /* ── Header ─────────────────────────────────────────────────────────────────── */
@@ -85,29 +84,56 @@ h1 {
 
 .header-link:hover { opacity: .75; }
 
-/* ── Grid ───────────────────────────────────────────────────────────────────── */
+/* ── Tab Navigation ─────────────────────────────────────────────────────────── */
+
+.tab-nav {
+  background: var(--card);
+  border-bottom: 1px solid var(--border);
+  display: flex;
+  position: sticky;
+  top: 54px;
+  z-index: 90;
+}
+
+.tab-btn {
+  flex: 1;
+  padding: .72rem .5rem;
+  background: none;
+  border: none;
+  border-bottom: 2px solid transparent;
+  color: var(--muted);
+  font-size: .82rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: color .2s, border-color .2s;
+  white-space: nowrap;
+  line-height: 1;
+}
+
+.tab-btn.active         { color: var(--primary); border-bottom-color: var(--primary); }
+.tab-btn:hover:not(.active) { color: var(--text); }
+
+.tab-pane        { display: none; }
+.tab-pane.active { display: block; }
+
+/* ── Main & Tab Grids ───────────────────────────────────────────────────────── */
 
 main {
   max-width: 1100px;
   margin: 1.25rem auto 1.5rem;
   padding: 0 1rem;
+}
+
+.tab-grid-2 {
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: 1.1rem;
   align-items: start;
 }
 
-#calorie-section { grid-column: 1; }
-#todo-section    { grid-column: 2; }
-#termine-section { grid-column: 1 / -1; }
-
 @media (max-width: 580px) {
-  main {
-    grid-template-columns: 1fr;
-    margin-top: 1rem;
-    gap: 1rem;
-  }
-  #calorie-section, #todo-section, #termine-section { grid-column: 1; }
+  main { margin-top: .75rem; }
+  .tab-grid-2 { grid-template-columns: 1fr; gap: 1rem; }
 }
 
 /* ── Cards ──────────────────────────────────────────────────────────────────── */
@@ -536,50 +562,28 @@ input[type="time"] {
   .fc .fc-button { padding: .24rem .48rem !important; }
 }
 
-/* ── Bottom Navigation ──────────────────────────────────────────────────────── */
+/* ── Scan Link (Ernährung Tab) ──────────────────────────────────────────────── */
 
-.bottom-nav {
-  display: none;
-  position: fixed;
-  bottom: 0;
-  left: 0;
-  right: 0;
-  height: var(--bnav-h);
-  background: var(--card);
-  border-top: 1px solid var(--border);
-  z-index: 200;
-  align-items: center;
-  justify-content: space-around;
-  padding-bottom: env(safe-area-inset-bottom, 0px);
-}
-
-@media (max-width: 700px) { .bottom-nav { display: flex; } }
-
-.bnav-item {
-  flex: 1;
+.btn-scan-link {
   display: flex;
-  flex-direction: column;
   align-items: center;
-  gap: .18rem;
+  justify-content: center;
+  gap: .5rem;
+  margin-top: .9rem;
+  padding: .72rem 1.2rem;
+  background: var(--primary-dim);
+  color: var(--primary);
+  border: 1px solid rgba(129,140,248,.25);
+  border-radius: var(--radius-sm);
+  font-size: .88rem;
+  font-weight: 600;
   text-decoration: none;
-  padding: .45rem;
   transition: opacity .2s;
 }
 
-.bnav-item:hover { opacity: .7; }
-
-.bnav-icon  { font-size: 1.25rem; line-height: 1; }
-
-.bnav-label {
-  font-size: .62rem;
-  color: var(--muted);
-  font-weight: 600;
-  letter-spacing: .03em;
-}
+.btn-scan-link:hover { opacity: .8; }
 
 /* ── Finance / Investitionsberater ──────────────────────────────────────────── */
-
-#finance-section { grid-column: 1 / -1; }
 
 /* Risikoprofil collapsible */
 .profile-details {
@@ -734,16 +738,21 @@ details[open] .profile-summary::after { content: " ▴"; }
   flex-shrink: 0;
 }
 
-/* Analyze button */
-.btn-analyze {
-  width: 100%;
+/* Analyze button row */
+.analyze-btn-row {
+  display: flex;
+  gap: .6rem;
   margin-top: .85rem;
-  padding: .9rem 1.2rem;
+}
+
+.btn-analyze {
+  flex: 1;
+  padding: .85rem 1rem;
   background: linear-gradient(135deg, #4f46e5, #7c3aed);
   color: #fff;
   border: none;
   border-radius: var(--radius-sm);
-  font-size: 1rem;
+  font-size: .9rem;
   font-weight: 700;
   cursor: pointer;
   letter-spacing: -.01em;
@@ -753,6 +762,8 @@ details[open] .profile-summary::after { content: " ▴"; }
 .btn-analyze:hover  { opacity: .87; }
 .btn-analyze:active { transform: scale(.98); }
 .btn-analyze:disabled { opacity: .45; cursor: not-allowed; transform: none; }
+
+.btn-discover { background: linear-gradient(135deg, #059669, #0d9488); }
 
 /* Analysis result box */
 .analysis-box {
@@ -812,7 +823,7 @@ details[open] .profile-summary::after { content: " ▴"; }
 .analysis-error { color: var(--danger); font-size: .84rem; }
 
 @media (max-width: 580px) {
-  #finance-section { grid-column: 1; }
+  .analyze-btn-row { flex-direction: column; }
   .finance-form .pf-qty,
   .finance-form .pf-price { flex: 1 1 80px; }
 }

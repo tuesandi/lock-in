@@ -4,6 +4,7 @@ import psycopg2.extras
 from datetime import date, datetime
 import os
 import re
+import json
 import atexit
 import anthropic
 import requests
@@ -448,11 +449,24 @@ def analyze_food():
     if media_type not in ALLOWED_MIME:
         media_type = "image/jpeg"
 
+    vision_prompt = (
+        "Du bist ein präziser Ernährungsanalyst. Analysiere dieses Essensfoto.\n"
+        "Nutze sichtbare Referenzobjekte (Standard-Teller ≈ 26 cm Ø, Besteck, Gläser) "
+        "zur Mengenabschätzung. Zerlege das Gericht in seine Hauptzutaten.\n\n"
+        "Antworte AUSSCHLIESSLICH mit einem gültigen JSON-Objekt – kein Markdown, kein Text:\n"
+        '{"description":"Kurze Gerichtsbeschreibung",'
+        '"total_calories":650,'
+        '"breakdown":['
+        '{"ingredient":"Zutat 1","grams":200,"calories":260,"protein_g":9.0,"carbs_g":52.0,"fat_g":1.5},'
+        '{"ingredient":"Zutat 2","grams":80,"calories":120,"protein_g":5.0,"carbs_g":10.0,"fat_g":6.0}'
+        "]}"
+    )
+
     try:
         client = anthropic.Anthropic(api_key=api_key)
         message = client.messages.create(
-            model="claude-sonnet-4-5",
-            max_tokens=16,
+            model="claude-sonnet-4-6",
+            max_tokens=800,
             messages=[
                 {
                     "role": "user",
@@ -465,10 +479,7 @@ def analyze_food():
                                 "data": image_b64,
                             },
                         },
-                        {
-                            "type": "text",
-                            "text": "Analysiere dieses Essensfoto. Schätze die Kalorien und antworte NUR mit einer Zahl.",
-                        },
+                        {"type": "text", "text": vision_prompt},
                     ],
                 }
             ],
@@ -482,11 +493,19 @@ def analyze_food():
         return jsonify({"error": "API-Fehler: " + msg[:300]}), 502
 
     raw = message.content[0].text.strip()
-    match = re.search(r"\d+", raw)
-    if not match:
-        return jsonify({"error": "Konnte keine Zahl aus Antwort lesen", "raw": raw}), 500
-
-    return jsonify({"calories": int(match.group())})
+    try:
+        json_match = re.search(r"\{[\s\S]*\}", raw)
+        parsed = json.loads(json_match.group() if json_match else raw)
+        return jsonify({
+            "calories": int(parsed.get("total_calories", 0)),
+            "description": parsed.get("description", ""),
+            "breakdown": parsed.get("breakdown", []),
+        })
+    except Exception:
+        num = re.search(r"\d+", raw)
+        if num:
+            return jsonify({"calories": int(num.group()), "description": "", "breakdown": []})
+        return jsonify({"error": "Antwort nicht parsbar", "raw": raw[:200]}), 500
 
 
 # ── Morning Briefing ──────────────────────────────────────────────────────────

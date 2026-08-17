@@ -37,17 +37,23 @@ def _row_to_dict(row):
 # ── Market Data Fetchers ───────────────────────────────────────────────────────
 
 def fetch_stock_data(ticker: str) -> dict:
-    """Current price + day-change % via yfinance."""
+    """Current price + day-change % via yfinance. Handles GBp→GBP conversion."""
     try:
         t = yf.Ticker(ticker)
         fi = t.fast_info
         current = fi.last_price
         prev = fi.previous_close
+        currency = getattr(fi, "currency", "USD") or "USD"
+        # LSE quotes in GBp (pence) → divide by 100 to get GBP
+        if currency in ("GBp", "GBX"):
+            if current: current = current / 100
+            if prev:    prev    = prev / 100
+            currency = "GBP"
         change_pct = round((current - prev) / prev * 100, 2) if current and prev else None
         return {
             "price": round(float(current), 4) if current else None,
             "change_pct": change_pct,
-            "currency": getattr(fi, "currency", "USD"),
+            "currency": currency,
         }
     except Exception:
         return {"price": None, "change_pct": None, "currency": None}
@@ -186,31 +192,32 @@ def analyze_portfolio():
     budget = profile.get("monthly_budget")
     budget_str = f"${budget:,.2f}/Monat" if budget else "nicht angegeben"
 
-    prompt = f"""Du bist ein hochdisziplinierter, risikobewusster Finanzanalyst mit jahrzehntelanger Erfahrung in Aktien, ETFs und Kryptowährungen. Dein Stil ist präzise, direkt und handlungsorientiert – keine Floskeln, keine übertriebene Vorsicht.
+    prompt = f"""Du bist ein hochdisziplinierter, risikobewusster Finanzanalyst. Dein Arbeitsprinzip: Schrittweises Denken (Chain of Thought) vor jeder Empfehlung – dann präzise, konkrete Handlungsanweisungen.
 
 ## Investorenprofil
 - Risikotoleranz: {risk}
 - Investitionsziele: {goals}
-- Monatliches Investitionsbudget: {budget_str}
+- Monatliches Budget: {budget_str}
 
-## Portfolio (Gesamtwert: ~{portfolio_value_str})
+## Portfolio (Gesamtwert Einkauf: ~{portfolio_value_str})
 
 {positions_text}
 
 ---
 
-Erstelle jetzt eine strukturierte Analyse auf Deutsch mit genau diesen drei Abschnitten:
+Analysiere das Portfolio auf Deutsch in genau diesen drei Abschnitten:
 
 ### 1. Portfolio-Gesamtlage
-Bewerte Gesamtwert, Diversifikation nach Anlageklasse und identifiziere konkrete Klumpenrisiken (welche Position oder Klasse dominiert zu stark?).
+Gesamtwert, Diversifikation nach Anlageklasse, konkrete Klumpenrisiken (welche Position dominiert zu stark und warum ist das problematisch?).
 
 ### 2. Positions-Analyse
-Gib für jede Position eine klare Empfehlung in diesem Format:
+Für jede Position:
 **[TICKER] → HALTEN / KAUFEN/AUFSTOCKEN / VERKAUFEN**
-Begründung: (max. 2 Sätze – ausschließlich basierend auf Kursverlauf, Gewinn/Verlust und aktuellen Schlagzeilen)
+Denke: (1-2 Sätze Chain of Thought: Was sagt Kursverlauf + News zusammen?)
+Aktion: (Konkrete Handlungsanweisung mit Stückzahl – z.B. „Verkaufe 2 von 5 Anteilen (40 %), ca. 340 €. Ziel: Gewinnmitnahme nach +28 %." oder „Stocke um 3 Stück / ca. 480 € auf – Kostendurchschnitt bei aktuellem Rücksetzer nutzen." oder „Halten, kein Handlungsbedarf.")
 
 ### 3. Impuls-Check
-Eine kurze, direkte Erinnerung daran, warum die langfristige Strategie – basierend auf Risikoprofil und Zielen – Vorrang vor kurzfristigen Impulsen haben sollte. Max. 3 Sätze."""
+Max. 3 Sätze: Warum die langfristige Strategie (Profil: {risk}, Ziel: {goals}) Vorrang vor kurzfristigen Marktreaktionen hat."""
 
     try:
         client = anthropic.Anthropic(api_key=api_key)
@@ -231,6 +238,83 @@ Eine kurze, direkte Erinnerung daran, warum die langfristige Strategie – basie
         "portfolio_value": total_value,
         "positions": enriched,
     })
+
+
+# ── Investment Recommendations ────────────────────────────────────────────────
+
+@finance_bp.route("/api/finance/recommend_investments", methods=["POST"])
+def recommend_investments():
+    api_key = os.environ.get("ANTHROPIC_API_KEY", "").strip()
+    if not api_key:
+        return jsonify({"error": "ANTHROPIC_API_KEY not set"}), 500
+
+    conn = get_db()
+    cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+    cur.execute("SELECT * FROM user_portfolio ORDER BY asset_type ASC, asset_name ASC")
+    raw_positions = [dict(r) for r in cur.fetchall()]
+    cur.execute("SELECT * FROM user_financial_profile WHERE id = 1")
+    profile_row = cur.fetchone()
+    cur.close()
+    conn.close()
+
+    profile = _row_to_dict(profile_row) if profile_row else {}
+    risk = profile.get("risk_tolerance") or "nicht angegeben"
+    goals = profile.get("investment_goals") or "nicht angegeben"
+    budget = profile.get("monthly_budget")
+    budget_str = f"${float(budget):,.0f}/Monat" if budget else "nicht angegeben"
+
+    if raw_positions:
+        type_counts: dict = {}
+        for p in raw_positions:
+            t = p.get("asset_type", "Unbekannt")
+            type_counts[t] = type_counts.get(t, 0) + 1
+        portfolio_lines = "\n".join(
+            f"- {p['asset_name']} ({p.get('ticker', '–')}) [{p['asset_type']}]: "
+            f"{_to_float(p['quantity'])} Stück zu {_to_float(p['buy_price'])}"
+            for p in raw_positions
+        )
+        type_summary = ", ".join(f"{k}: {v}×" for k, v in type_counts.items())
+    else:
+        portfolio_lines = "Noch kein Portfolio vorhanden."
+        type_summary = "leer"
+
+    prompt = f"""Du bist ein erfahrener, unabhängiger Anlageberater. Analysiere das bestehende Portfolio und empfiehl 3-4 konkrete neue Investments, die die Diversifikation sinnvoll ergänzen.
+
+## Investorenprofil
+- Risikotoleranz: {risk}
+- Investitionsziele: {goals}
+- Monatliches Budget: {budget_str}
+
+## Bestehendes Portfolio
+{portfolio_lines}
+Aktuelle Zusammensetzung: {type_summary}
+
+---
+
+Empfiehl genau 3-4 neue Investments auf Deutsch. Format pro Empfehlung:
+
+**[NAME] ([BÖRSENTICKER])**
+Kategorie: ETF / Aktie / Anleihe / Sonstiges
+Warum: (2 Sätze: Welche Lücke füllt dies? Warum passt es zu Risikoprofil und Zielen?)
+Einstieg: (Konkrete Empfehlung mit Stückzahl und Betrag, z.B. „3 Anteile / ca. 270 €")
+
+Wichtig: Nutze echte, handelbare Börsenticker (z.B. IWDA.AS für MSCI World auf Euronext Amsterdam, EMIM.L für Emerging Markets auf LSE, VUSA.L für S&P 500 auf LSE, XDWD.DE für MSCI World auf Xetra). Bevorzuge für langfristige Anleger kosteneffiziente, liquide ETFs mit niedrigen TERs."""
+
+    try:
+        client = anthropic.Anthropic(api_key=api_key)
+        msg = client.messages.create(
+            model="claude-sonnet-4-6",
+            max_tokens=1000,
+            messages=[{"role": "user", "content": prompt}],
+        )
+        recommendations = msg.content[0].text.strip()
+    except Exception as e:
+        err = str(e)
+        if "credit balance" in err or "billing" in err.lower():
+            return jsonify({"error": "Kein API-Guthaben."}), 402
+        return jsonify({"error": "Claude-Fehler: " + err[:300]}), 502
+
+    return jsonify({"recommendations": recommendations})
 
 
 # ── Portfolio CRUD ─────────────────────────────────────────────────────────────
