@@ -10,10 +10,12 @@ import requests
 import feedparser
 from dotenv import load_dotenv
 from apscheduler.schedulers.background import BackgroundScheduler
+from finance import finance_bp
 
 load_dotenv()
 
 app = Flask(__name__)
+app.register_blueprint(finance_bp)
 
 
 # ── Pushover ──────────────────────────────────────────────────────────────────
@@ -113,6 +115,28 @@ def init_db():
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         )
     """)
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS user_portfolio (
+            id SERIAL PRIMARY KEY,
+            asset_name TEXT NOT NULL,
+            ticker TEXT,
+            asset_type TEXT NOT NULL,
+            quantity NUMERIC NOT NULL,
+            buy_price NUMERIC NOT NULL,
+            notes TEXT,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+    """)
+    cur.execute("ALTER TABLE user_portfolio ENABLE ROW LEVEL SECURITY")
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS user_financial_profile (
+            id INTEGER PRIMARY KEY CHECK (id = 1),
+            risk_tolerance TEXT,
+            investment_goals TEXT,
+            monthly_budget NUMERIC
+        )
+    """)
+    cur.execute("ALTER TABLE user_financial_profile ENABLE ROW LEVEL SECURITY")
     conn.commit()
     cur.close()
     conn.close()
