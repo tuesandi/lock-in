@@ -99,7 +99,7 @@ def fetch_market_data(position: dict) -> dict:
     ticker = (position.get("ticker") or "").strip()
     asset_type = (position.get("asset_type") or "").lower()
 
-    if "crypto" in asset_type:
+    if any(x in asset_type for x in ("crypto", "krypto", "Krypto", "Crypto")):
         market = fetch_crypto_data(ticker)
     else:
         market = fetch_stock_data(ticker)

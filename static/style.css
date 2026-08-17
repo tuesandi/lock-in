@@ -576,3 +576,243 @@ input[type="time"] {
   font-weight: 600;
   letter-spacing: .03em;
 }
+
+/* ── Finance / Investitionsberater ──────────────────────────────────────────── */
+
+#finance-section { grid-column: 1 / -1; }
+
+/* Risikoprofil collapsible */
+.profile-details {
+  margin-bottom: .9rem;
+}
+
+.profile-summary {
+  font-size: .8rem;
+  font-weight: 600;
+  color: var(--muted);
+  cursor: pointer;
+  list-style: none;
+  padding: .3rem 0;
+  user-select: none;
+  transition: color .2s;
+}
+
+.profile-summary::-webkit-details-marker { display: none; }
+.profile-summary::after { content: " ▾"; font-size: .7rem; }
+details[open] .profile-summary::after { content: " ▴"; }
+.profile-summary:hover { color: var(--text); }
+
+.finance-profile-bar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: .4rem;
+  margin-top: .6rem;
+  align-items: center;
+}
+
+.finance-profile-bar select,
+.finance-profile-bar input {
+  flex: 1 1 140px;
+  padding: .48rem .7rem;
+  border: 1px solid var(--border-2);
+  border-radius: var(--radius-sm);
+  font-size: .82rem;
+  background: var(--card-2);
+  color: var(--text);
+  outline: none;
+  transition: border-color .2s;
+  min-width: 0;
+}
+
+.finance-profile-bar select:focus,
+.finance-profile-bar input:focus { border-color: var(--primary); }
+.finance-profile-bar input::placeholder { color: var(--muted); }
+
+/* Add Position Form */
+.finance-form {
+  display: flex;
+  flex-wrap: wrap;
+  gap: .4rem;
+  margin-bottom: .9rem;
+}
+
+.finance-form input,
+.finance-form select {
+  padding: .52rem .7rem;
+  border: 1px solid var(--border-2);
+  border-radius: var(--radius-sm);
+  font-size: .84rem;
+  outline: none;
+  background: var(--card-2);
+  color: var(--text);
+  transition: border-color .2s;
+  min-width: 0;
+}
+
+.finance-form input::placeholder { color: var(--muted); }
+.finance-form input:focus,
+.finance-form select:focus { border-color: var(--primary); }
+
+.finance-form .pf-name   { flex: 2 1 160px; }
+.finance-form .pf-ticker { flex: 1 1 90px; }
+.finance-form .pf-type   { flex: 1 1 90px; }
+.finance-form .pf-qty    { flex: 0 1 80px; }
+.finance-form .pf-price  { flex: 0 1 100px; }
+
+/* Portfolio list */
+.portfolio-list { max-height: 340px; }
+
+.portfolio-item {
+  display: flex;
+  align-items: center;
+  gap: .55rem;
+  padding: .58rem .78rem;
+  background: var(--card-2);
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border);
+  flex-wrap: wrap;
+}
+
+.portfolio-item-main {
+  display: flex;
+  align-items: center;
+  gap: .4rem;
+  flex: 1;
+  min-width: 0;
+}
+
+.portfolio-name {
+  font-weight: 700;
+  font-size: .87rem;
+  color: var(--text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.portfolio-ticker {
+  font-size: .72rem;
+  font-weight: 700;
+  color: var(--primary);
+  background: var(--primary-dim);
+  padding: .1rem .38rem;
+  border-radius: 5px;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.portfolio-type-badge {
+  font-size: .68rem;
+  color: var(--muted);
+  background: var(--border);
+  padding: .1rem .32rem;
+  border-radius: 4px;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.portfolio-item-details {
+  display: flex;
+  align-items: center;
+  gap: .55rem;
+  font-size: .8rem;
+  flex-shrink: 0;
+}
+
+.portfolio-qty  { color: var(--text-dim); white-space: nowrap; }
+.portfolio-sep  { color: var(--muted); }
+
+.portfolio-total {
+  font-weight: 700;
+  color: var(--success);
+  white-space: nowrap;
+}
+
+.portfolio-item-actions {
+  display: flex;
+  gap: .25rem;
+  flex-shrink: 0;
+}
+
+/* Analyze button */
+.btn-analyze {
+  width: 100%;
+  margin-top: .85rem;
+  padding: .9rem 1.2rem;
+  background: linear-gradient(135deg, #4f46e5, #7c3aed);
+  color: #fff;
+  border: none;
+  border-radius: var(--radius-sm);
+  font-size: 1rem;
+  font-weight: 700;
+  cursor: pointer;
+  letter-spacing: -.01em;
+  transition: opacity .2s, transform .1s;
+}
+
+.btn-analyze:hover  { opacity: .87; }
+.btn-analyze:active { transform: scale(.98); }
+.btn-analyze:disabled { opacity: .45; cursor: not-allowed; transform: none; }
+
+/* Analysis result box */
+.analysis-box {
+  margin-top: 1rem;
+  padding: 1.1rem 1.2rem;
+  background: var(--card-2);
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border-2);
+}
+
+.analysis-total {
+  font-size: .82rem;
+  font-weight: 700;
+  color: var(--success);
+  margin-bottom: .75rem;
+  padding-bottom: .6rem;
+  border-bottom: 1px solid var(--border);
+}
+
+.analysis-heading {
+  font-size: .95rem;
+  font-weight: 700;
+  color: var(--primary);
+  margin: 1rem 0 .45rem;
+  letter-spacing: -.01em;
+}
+
+.analysis-heading:first-child { margin-top: 0; }
+
+.analysis-para {
+  font-size: .84rem;
+  color: var(--text-dim);
+  line-height: 1.65;
+  margin: .18rem 0;
+}
+
+.rec-line {
+  font-size: .87rem;
+  font-weight: 600;
+  padding: .45rem .78rem;
+  border-radius: 8px;
+  margin: .32rem 0;
+  line-height: 1.5;
+}
+
+.rec-buy  { background: rgba(52,211,153,.1);  color: #34d399; border-left: 3px solid #34d399; }
+.rec-hold { background: rgba(251,191,36,.1);  color: #fbbf24; border-left: 3px solid #fbbf24; }
+.rec-sell { background: rgba(248,113,113,.1); color: #f87171; border-left: 3px solid #f87171; }
+
+.analysis-loading {
+  font-size: .86rem;
+  color: var(--muted);
+  text-align: center;
+  padding: 1.6rem 0;
+}
+
+.analysis-error { color: var(--danger); font-size: .84rem; }
+
+@media (max-width: 580px) {
+  #finance-section { grid-column: 1; }
+  .finance-form .pf-qty,
+  .finance-form .pf-price { flex: 1 1 80px; }
+}

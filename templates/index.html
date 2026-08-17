@@ -76,6 +76,58 @@
     </ul>
   </section>
 
+  <!-- Investitionsberater -->
+  <section class="card" id="finance-section">
+    <div class="card-header">
+      <h2>Investitionsberater</h2>
+      <span class="badge" id="portfolio-count">0 Positionen</span>
+    </div>
+
+    <!-- Risikoprofil (collapsible) -->
+    <details class="profile-details">
+      <summary class="profile-summary">Risikoprofil bearbeiten</summary>
+      <div class="finance-profile-bar">
+        <select id="pf-risk">
+          <option value="">Risikotoleranz wählen…</option>
+          <option value="Konservativ">Konservativ</option>
+          <option value="Moderat">Moderat</option>
+          <option value="Wachstum">Wachstum</option>
+          <option value="Aggressiv">Aggressiv</option>
+        </select>
+        <input type="text" id="pf-goals" placeholder="Investitionsziele (z.B. Altersvorsorge)">
+        <input type="number" id="pf-budget" placeholder="Budget/Monat ($)" min="0" step="50">
+        <button class="btn-icon" id="save-profile-btn">Speichern</button>
+      </div>
+    </details>
+
+    <!-- Position hinzufügen -->
+    <form class="finance-form" id="portfolio-form">
+      <input class="pf-name" type="text" id="pf-name" placeholder="Name (z.B. Apple Inc.)" autocomplete="off" required>
+      <input class="pf-ticker" type="text" id="pf-ticker" placeholder="Ticker (AAPL)" autocomplete="off">
+      <select class="pf-type" id="pf-type">
+        <option value="Aktie">Aktie</option>
+        <option value="ETF">ETF</option>
+        <option value="Krypto">Krypto</option>
+      </select>
+      <input class="pf-qty" type="number" id="pf-quantity" placeholder="Menge" min="0.0001" step="any" required>
+      <input class="pf-price" type="number" id="pf-buy-price" placeholder="Kaufpreis" min="0" step="any" required>
+      <button type="submit" class="btn-add" id="pf-submit-btn">+</button>
+    </form>
+
+    <!-- Portfolio-Liste -->
+    <ul class="item-list portfolio-list" id="portfolio-list">
+      <li class="empty-hint">Noch keine Positionen eingetragen.</li>
+    </ul>
+
+    <!-- Analyse-Button -->
+    <button class="btn-analyze" id="analyze-btn">Portfolio jetzt analysieren 🧠</button>
+
+    <!-- Analyse-Ergebnis -->
+    <div class="analysis-box" id="analysis-box" style="display:none">
+      <div id="analysis-content"></div>
+    </div>
+  </section>
+
   <!-- Termine -->
   <section class="card" id="termine-section">
     <div class="card-header">
@@ -113,6 +165,10 @@
   <a href="#todo-section" class="bnav-item">
     <span class="bnav-icon">✅</span>
     <span class="bnav-label">To-Dos</span>
+  </a>
+  <a href="#finance-section" class="bnav-item">
+    <span class="bnav-icon">📈</span>
+    <span class="bnav-label">Invest</span>
   </a>
   <a href="#termine-section" class="bnav-item">
     <span class="bnav-icon">📅</span>

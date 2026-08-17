@@ -336,9 +336,200 @@ function initCalendar() {
   selectDay(today);
 }
 
+// ── Finance / Investitionsberater ─────────────────────────────────────────────
+
+let portfolio = [];
+let editingPortfolioId = null;
+
+async function loadPortfolio() {
+  portfolio = await api("/api/portfolio");
+  renderPortfolio();
+  document.getElementById("portfolio-count").textContent = `${portfolio.length} Position${portfolio.length !== 1 ? "en" : ""}`;
+}
+
+function renderPortfolio() {
+  const list = document.getElementById("portfolio-list");
+  if (!portfolio.length) {
+    list.innerHTML = '<li class="empty-hint">Noch keine Positionen eingetragen.</li>';
+    return;
+  }
+  list.innerHTML = portfolio
+    .map((p) => {
+      const total = (Number(p.quantity) * Number(p.buy_price)).toLocaleString("de-CH", {
+        minimumFractionDigits: 2,
+        maximumFractionDigits: 2,
+      });
+      const qtyFmt = Number(p.quantity).toLocaleString("de-CH", { maximumFractionDigits: 6 });
+      const priceFmt = Number(p.buy_price).toLocaleString("de-CH", { minimumFractionDigits: 2, maximumFractionDigits: 4 });
+      return `
+      <li class="portfolio-item" data-id="${p.id}">
+        <div class="portfolio-item-main">
+          <span class="portfolio-name">${esc(p.asset_name)}</span>
+          ${p.ticker ? `<span class="portfolio-ticker">${esc(p.ticker.toUpperCase())}</span>` : ""}
+          <span class="portfolio-type-badge">${esc(p.asset_type)}</span>
+        </div>
+        <div class="portfolio-item-details">
+          <span class="portfolio-qty">${qtyFmt} × ${priceFmt}</span>
+          <span class="portfolio-sep">≈</span>
+          <span class="portfolio-total">${total}</span>
+        </div>
+        <div class="portfolio-item-actions">
+          <button class="btn-icon edit-btn" data-id="${p.id}" title="Bearbeiten">✎</button>
+          <button class="del-btn" data-id="${p.id}" title="Löschen">✕</button>
+        </div>
+      </li>`;
+    })
+    .join("");
+
+  list.querySelectorAll(".del-btn").forEach((btn) =>
+    btn.addEventListener("click", () => deletePortfolioEntry(+btn.dataset.id))
+  );
+  list.querySelectorAll(".edit-btn").forEach((btn) =>
+    btn.addEventListener("click", () => startEditPortfolio(+btn.dataset.id))
+  );
+}
+
+document.getElementById("portfolio-form").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const assetName = document.getElementById("pf-name").value.trim();
+  const ticker = document.getElementById("pf-ticker").value.trim();
+  const assetType = document.getElementById("pf-type").value;
+  const quantity = parseFloat(document.getElementById("pf-quantity").value);
+  const buyPrice = parseFloat(document.getElementById("pf-buy-price").value);
+  if (!assetName || !quantity || isNaN(buyPrice)) return;
+
+  const body = JSON.stringify({ asset_name: assetName, ticker, asset_type: assetType, quantity, buy_price: buyPrice });
+
+  if (editingPortfolioId) {
+    await api(`/api/portfolio/${editingPortfolioId}`, { method: "PUT", body });
+    editingPortfolioId = null;
+    document.getElementById("pf-submit-btn").textContent = "+";
+  } else {
+    await api("/api/portfolio", { method: "POST", body });
+  }
+
+  e.target.reset();
+  await loadPortfolio();
+});
+
+function startEditPortfolio(id) {
+  const p = portfolio.find((x) => x.id === id);
+  if (!p) return;
+  editingPortfolioId = id;
+  document.getElementById("pf-name").value = p.asset_name;
+  document.getElementById("pf-ticker").value = p.ticker || "";
+  document.getElementById("pf-type").value = p.asset_type;
+  document.getElementById("pf-quantity").value = p.quantity;
+  document.getElementById("pf-buy-price").value = p.buy_price;
+  document.getElementById("pf-submit-btn").textContent = "✓";
+  document.getElementById("pf-name").focus();
+  document.getElementById("pf-name").scrollIntoView({ behavior: "smooth", block: "nearest" });
+}
+
+async function deletePortfolioEntry(id) {
+  await api(`/api/portfolio/${id}`, { method: "DELETE" });
+  if (editingPortfolioId === id) {
+    editingPortfolioId = null;
+    document.getElementById("portfolio-form").reset();
+    document.getElementById("pf-submit-btn").textContent = "+";
+  }
+  await loadPortfolio();
+}
+
+// ── Financial Profile ─────────────────────────────────────────────────────────
+
+async function loadProfile() {
+  try {
+    const p = await api("/api/financial-profile");
+    if (!p) return;
+    if (p.risk_tolerance) document.getElementById("pf-risk").value = p.risk_tolerance;
+    if (p.investment_goals) document.getElementById("pf-goals").value = p.investment_goals;
+    if (p.monthly_budget) document.getElementById("pf-budget").value = p.monthly_budget;
+  } catch {}
+}
+
+document.getElementById("save-profile-btn").addEventListener("click", async () => {
+  const risk = document.getElementById("pf-risk").value || null;
+  const goals = document.getElementById("pf-goals").value.trim() || null;
+  const budget = parseFloat(document.getElementById("pf-budget").value) || null;
+  await api("/api/financial-profile", {
+    method: "PUT",
+    body: JSON.stringify({ risk_tolerance: risk, investment_goals: goals, monthly_budget: budget }),
+  });
+  const btn = document.getElementById("save-profile-btn");
+  const orig = btn.textContent;
+  btn.textContent = "✓ Gespeichert";
+  setTimeout(() => { btn.textContent = orig; }, 2000);
+});
+
+// ── Portfolio Analysis ────────────────────────────────────────────────────────
+
+function renderAnalysis(text) {
+  return text
+    .split("\n")
+    .map((line) => {
+      if (line.startsWith("### ")) {
+        return `<h4 class="analysis-heading">${esc(line.slice(4))}</h4>`;
+      }
+      if (!line.trim()) return '<div style="height:.35rem"></div>';
+
+      const escaped = esc(line);
+      const withBold = escaped.replace(/\*\*(.*?)\*\*/g, "<strong>$1</strong>");
+
+      const up = line.toUpperCase();
+      if (up.includes("→ KAUFEN") || up.includes("→ AUFSTOCKEN")) {
+        return `<div class="rec-line rec-buy">${withBold}</div>`;
+      }
+      if (up.includes("→ VERKAUFEN")) {
+        return `<div class="rec-line rec-sell">${withBold}</div>`;
+      }
+      if (up.includes("→ HALTEN")) {
+        return `<div class="rec-line rec-hold">${withBold}</div>`;
+      }
+      return `<div class="analysis-para">${withBold}</div>`;
+    })
+    .join("");
+}
+
+document.getElementById("analyze-btn").addEventListener("click", async () => {
+  const btn = document.getElementById("analyze-btn");
+  const box = document.getElementById("analysis-box");
+  const content = document.getElementById("analysis-content");
+
+  btn.disabled = true;
+  btn.textContent = "Analysiere… ⏳";
+  box.style.display = "block";
+  content.innerHTML =
+    '<div class="analysis-loading">Marktdaten werden geladen und KI analysiert dein Portfolio…<br>Das kann 15–30 Sekunden dauern.</div>';
+  box.scrollIntoView({ behavior: "smooth", block: "nearest" });
+
+  try {
+    const result = await api("/api/finance/analyze", { method: "POST" });
+
+    if (result.error) {
+      content.innerHTML = `<div class="analysis-error">${esc(result.error)}</div>`;
+    } else {
+      let html = "";
+      if (result.portfolio_value) {
+        const valFmt = Number(result.portfolio_value).toLocaleString("de-CH", {
+          minimumFractionDigits: 2, maximumFractionDigits: 2,
+        });
+        html += `<div class="analysis-total">Gesamtportfolio-Wert (Einkaufspreise): $${valFmt}</div>`;
+      }
+      html += renderAnalysis(result.analysis);
+      content.innerHTML = html;
+    }
+  } catch (err) {
+    content.innerHTML = `<div class="analysis-error">Netzwerkfehler: ${esc(err.message)}</div>`;
+  } finally {
+    btn.disabled = false;
+    btn.textContent = "Portfolio jetzt analysieren 🧠";
+  }
+});
+
 // ── Init ──────────────────────────────────────────────────────────────────────
 
 (async () => {
-  await Promise.all([loadGoal(), loadEntries(), loadTodos()]);
+  await Promise.all([loadGoal(), loadEntries(), loadTodos(), loadPortfolio(), loadProfile()]);
   initCalendar();
 })();
