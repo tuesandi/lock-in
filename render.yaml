@@ -9,3 +9,11 @@ services:
         sync: false
       - key: DATABASE_URL
         sync: false
+      - key: APP_PASSWORD
+        sync: false
+      - key: API_TOKEN
+        sync: false
+      - key: SECRET_KEY
+        generateValue: true
+      - key: COOKIE_SECURE
+        value: "1"

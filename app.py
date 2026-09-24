@@ -1,4 +1,4 @@
-from flask import Flask, request, jsonify, render_template
+from flask import Flask, request, jsonify, render_template, session, redirect, url_for
 import psycopg2
 import psycopg2.extras
 from datetime import date, datetime
@@ -6,6 +6,9 @@ import os
 import re
 import json
 import atexit
+import hmac
+import time
+from datetime import timedelta
 import anthropic
 import requests
 import feedparser
@@ -17,6 +20,70 @@ load_dotenv()
 
 app = Flask(__name__)
 app.register_blueprint(finance_bp)
+
+
+# ── Auth ──────────────────────────────────────────────────────────────────────
+#
+# Browser: Login mit APP_PASSWORD, danach Session-Cookie (30 Tage).
+# Widgets / Cron / Skripte: API_TOKEN per Header "X-API-Token: <token>"
+# oder als Query-Parameter "?token=<token>".
+
+app.secret_key = os.environ.get("SECRET_KEY") or os.urandom(32)
+app.config.update(
+    PERMANENT_SESSION_LIFETIME=timedelta(days=30),
+    SESSION_COOKIE_HTTPONLY=True,
+    SESSION_COOKIE_SAMESITE="Lax",
+    SESSION_COOKIE_SECURE=os.environ.get("COOKIE_SECURE") == "1",
+)
+
+PUBLIC_ENDPOINTS = {"login", "static"}
+
+
+def _safe_equals(a, b):
+    return bool(a) and bool(b) and hmac.compare_digest(str(a), str(b))
+
+
+def _valid_api_token():
+    expected = os.environ.get("API_TOKEN", "").strip()
+    given = request.headers.get("X-API-Token") or request.args.get("token")
+    return _safe_equals(given, expected)
+
+
+@app.before_request
+def require_login():
+    if request.endpoint in PUBLIC_ENDPOINTS:
+        return None
+    if session.get("logged_in") or _valid_api_token():
+        return None
+    if request.path.startswith("/api/"):
+        return jsonify({"error": "Nicht angemeldet"}), 401
+    return redirect(url_for("login", next=request.path))
+
+
+@app.route("/login", methods=["GET", "POST"])
+def login():
+    password = os.environ.get("APP_PASSWORD", "")
+    if not password:
+        return "APP_PASSWORD ist nicht gesetzt – bitte in .env bzw. bei Render eintragen.", 500
+
+    error = None
+    if request.method == "POST":
+        if _safe_equals(request.form.get("password", ""), password):
+            session.clear()
+            session["logged_in"] = True
+            session.permanent = True
+            nxt = request.args.get("next", "/")
+            safe = nxt.startswith("/") and not nxt.startswith(("//", "/\\"))
+            return redirect(nxt if safe else "/")
+        time.sleep(1)  # bremst Passwort-Raten
+        error = "Falsches Passwort"
+    return render_template("login.html", error=error)
+
+
+@app.route("/logout")
+def logout():
+    session.clear()
+    return redirect(url_for("login"))
 
 
 # ── Pushover ──────────────────────────────────────────────────────────────────
@@ -36,9 +103,28 @@ def send_push_notification(title, message):
         pass
 
 
+def claim_notification(kind):
+    """Gibt True zurück, wenn diese Benachrichtigung heute noch nicht verschickt wurde.
+    Verhindert doppelte Pushes, wenn mehrere Instanzen (z. B. lokal + Render
+    oder mehrere gunicorn-Worker) gleichzeitig laufen."""
+    conn = get_db()
+    cur = conn.cursor()
+    cur.execute(
+        "INSERT INTO notification_log (kind, day) VALUES (%s, %s) ON CONFLICT DO NOTHING RETURNING kind",
+        (kind, date.today().isoformat()),
+    )
+    claimed = cur.fetchone() is not None
+    conn.commit()
+    cur.close()
+    conn.close()
+    return claimed
+
+
 def daily_reminder():
     today = date.today().isoformat()
     try:
+        if not claim_notification("daily_reminder"):
+            return
         conn = get_db()
         cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
         cur.execute(
@@ -128,7 +214,6 @@ def init_db():
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         )
     """)
-    cur.execute("ALTER TABLE user_portfolio ENABLE ROW LEVEL SECURITY")
     cur.execute("""
         CREATE TABLE IF NOT EXISTS user_financial_profile (
             id INTEGER PRIMARY KEY CHECK (id = 1),
@@ -137,7 +222,19 @@ def init_db():
             monthly_budget NUMERIC
         )
     """)
-    cur.execute("ALTER TABLE user_financial_profile ENABLE ROW LEVEL SECURITY")
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS notification_log (
+            kind TEXT NOT NULL,
+            day TEXT NOT NULL,
+            PRIMARY KEY (kind, day)
+        )
+    """)
+    # RLS ohne Policies sperrt den Zugriff über die öffentliche Supabase-REST-API
+    # (anon-Key). Die App selbst verbindet sich als Tabellen-Besitzer und ist
+    # davon nicht betroffen.
+    for table in ("todos", "calorie_goal", "calorie_entries", "termine",
+                  "user_portfolio", "user_financial_profile", "notification_log"):
+        cur.execute(f"ALTER TABLE {table} ENABLE ROW LEVEL SECURITY")
     conn.commit()
     cur.close()
     conn.close()
@@ -384,7 +481,7 @@ def get_termine_range():
     return jsonify([dict(r) for r in rows])
 
 
-# ── Widget Endpoints (unprotected, for Scriptable iPhone widgets) ─────────────
+# ── Widget Endpoints (für Scriptable-Widgets, brauchen API_TOKEN) ─────────────
 
 @app.route("/api/widget-todos", methods=["GET"])
 def widget_todos():
@@ -630,7 +727,10 @@ Erstelle aus diesen Daten ein kurzes, flüssig geschriebenes, motivierendes Audi
 @app.route("/api/cron-daily-summary", methods=["GET", "POST"])
 def cron_daily_summary():
     today = date.today().isoformat()
+    force = request.args.get("force") == "1"
     try:
+        if not force and not claim_notification("cron_daily_summary"):
+            return jsonify({"sent": False, "reason": "Heute bereits gesendet (?force=1 zum Erzwingen)"})
         conn = get_db()
         cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
         cur.execute(
@@ -645,8 +745,9 @@ def cron_daily_summary():
         todos = cur.fetchall()
         cur.close()
         conn.close()
-    except Exception as e:
-        return jsonify({"error": str(e)}), 500
+    except Exception:
+        app.logger.exception("cron_daily_summary fehlgeschlagen")
+        return jsonify({"error": "Datenbankfehler"}), 500
 
     if not termine and not todos:
         send_push_notification(
@@ -681,4 +782,8 @@ atexit.register(lambda: scheduler.shutdown())
 init_db()
 
 if __name__ == "__main__":
-    app.run(host="0.0.0.0", debug=True, port=5000)
+    # Debug-Modus NIE zusammen mit ngrok/Internet-Zugriff verwenden:
+    # Der Werkzeug-Debugger erlaubt das Ausführen von beliebigem Python-Code.
+    # Nur lokal zum Entwickeln mit FLASK_DEBUG=1 in der .env einschalten.
+    debug = os.environ.get("FLASK_DEBUG") == "1"
+    app.run(host="127.0.0.1", port=5000, debug=debug)

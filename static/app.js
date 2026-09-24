@@ -20,6 +20,10 @@ async function api(url, opts = {}) {
     headers: { "Content-Type": "application/json" },
     ...opts,
   });
+  if (res.status === 401) {
+    window.location.href = "/login";
+    return null;
+  }
   if (res.status === 204) return null;
   return res.json();
 }

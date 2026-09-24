@@ -827,3 +827,14 @@ details[open] .profile-summary::after { content: " ▴"; }
   .finance-form .pf-qty,
   .finance-form .pf-price { flex: 1 1 80px; }
 }
+
+
+/* ── Logout-Link ────────────────────────────────────────────────────────────── */
+
+.logout-link {
+  margin-left: auto;
+  color: var(--text-dim);
+  font-size: .8rem;
+  text-decoration: none;
+}
+.logout-link:hover { color: var(--text); }
