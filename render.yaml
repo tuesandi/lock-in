@@ -15,5 +15,7 @@ services:
         sync: false
       - key: SECRET_KEY
         generateValue: true
+      - key: SEC_USER_AGENT
+        sync: false
       - key: COOKIE_SECURE
         value: "1"

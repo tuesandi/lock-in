@@ -15,11 +15,13 @@ import feedparser
 from dotenv import load_dotenv
 from apscheduler.schedulers.background import BackgroundScheduler
 from finance import finance_bp
+from trader import trader_bp, init_trader_db, pelosi_job
 
 load_dotenv()
 
 app = Flask(__name__)
 app.register_blueprint(finance_bp)
+app.register_blueprint(trader_bp)
 
 
 # ── Auth ──────────────────────────────────────────────────────────────────────
@@ -235,6 +237,7 @@ def init_db():
     for table in ("todos", "calorie_goal", "calorie_entries", "termine",
                   "user_portfolio", "user_financial_profile", "notification_log"):
         cur.execute(f"ALTER TABLE {table} ENABLE ROW LEVEL SECURITY")
+    init_trader_db(cur)
     conn.commit()
     cur.close()
     conn.close()
@@ -776,6 +779,8 @@ def cron_daily_summary():
 
 scheduler = BackgroundScheduler(timezone="Europe/Zurich")
 scheduler.add_job(daily_reminder, "cron", hour=8, minute=0)
+# Kongress-Trades: neue House-PTRs der beobachteten Abgeordneten per Push melden
+scheduler.add_job(lambda: pelosi_job(send_push_notification), "cron", hour="9,13,18", minute=5)
 scheduler.start()
 atexit.register(lambda: scheduler.shutdown())
 

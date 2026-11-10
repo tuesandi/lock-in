@@ -138,6 +138,113 @@
 
     </section>
 
+    <section class="card trader-card" id="trader-section">
+      <div class="card-header">
+        <h2>Trader-Werkzeuge</h2>
+        <span class="badge" id="tr-currency-badge">CHF</span>
+      </div>
+
+      <details class="profile-details" id="tr-settings">
+        <summary class="profile-summary">Regeln &amp; Einstellungen</summary>
+        <div class="tr-settings-grid">
+          <label>Basiswährung<input type="text" id="tr-base" maxlength="3"></label>
+          <label>Cash im Depot<input type="number" id="tr-cash" min="0" step="any"></label>
+          <label>Cash-Puffer %<input type="number" id="tr-buffer" min="0" max="99" step="any"></label>
+          <label>Max. pro Titel %<input type="number" id="tr-cap" min="1" max="100" step="any"></label>
+          <label>Max. Order<input type="number" id="tr-max-order" min="0" step="any"></label>
+          <label>Min. Order<input type="number" id="tr-min-order" min="0" step="any"></label>
+          <label>Rebalancing-Band (Punkte)<input type="number" id="tr-band" min="0" step="any"></label>
+          <label>Max. Orders pro Tag<input type="number" id="tr-max-day" min="0" step="1"></label>
+          <label class="tr-wide">Gesperrte Ticker (Komma-getrennt)<input type="text" id="tr-blocked" placeholder="z.B. TSLA, GME"></label>
+          <label class="tr-wide">Beobachtete Abgeordnete (Komma-getrennt)<input type="text" id="tr-members" placeholder="Nancy Pelosi"></label>
+          <label class="tr-check"><input type="checkbox" id="tr-fractional"> Bruchteile von Aktien erlaubt</label>
+          <label class="tr-check"><input type="checkbox" id="tr-push"> Push bei neuen Kongress-Trades</label>
+        </div>
+        <div class="tr-row">
+          <span class="tr-hint" id="tr-sec-hint"></span>
+          <button class="btn-icon" id="tr-save-settings">Speichern</button>
+        </div>
+      </details>
+
+      <div class="tr-tabs" role="tablist">
+        <button class="tr-tab active" data-panel="rebalance" role="tab">Ziel &amp; Rebalancing</button>
+        <button class="tr-tab" data-panel="budget" role="tab">Neues Geld</button>
+        <button class="tr-tab" data-panel="news" role="tab">News</button>
+        <button class="tr-tab" data-panel="copycat" role="tab">Copycat 13F</button>
+        <button class="tr-tab" data-panel="pelosi" role="tab">Kongress</button>
+      </div>
+
+      <!-- Ziel & Rebalancing -->
+      <div class="tr-panel active" id="tr-panel-rebalance">
+        <div class="tr-subhead">
+          <span>Zielgewichte <span class="tr-hint" id="tr-target-source"></span></span>
+          <button class="tr-link" id="tr-from-portfolio">Aktuelles Portfolio übernehmen</button>
+        </div>
+        <div class="tr-targets" id="tr-targets"></div>
+        <div class="tr-row">
+          <button class="tr-link" id="tr-add-target">+ Titel hinzufügen</button>
+          <span class="tr-hint" id="tr-target-sum"></span>
+          <button class="btn-icon" id="tr-save-targets">Ziel speichern</button>
+        </div>
+        <div class="tr-row tr-controls">
+          <label class="tr-check"><input type="checkbox" id="tr-sell-untracked"> Positionen ausserhalb des Ziels verkaufen</label>
+          <button class="btn-analyze" id="tr-rebalance-btn">Rebalancing berechnen</button>
+        </div>
+        <div class="analysis-box" id="tr-rebalance-out" hidden></div>
+      </div>
+
+      <!-- Neues Geld -->
+      <div class="tr-panel" id="tr-panel-budget">
+        <p class="tr-intro">Verteilt einen neuen Betrag nach deinen Zielgewichten – mit Cash-Puffer, Obergrenze pro Titel und Mindestorder.</p>
+        <div class="tr-row tr-controls">
+          <input type="number" id="tr-amount" class="tr-input" placeholder="Betrag, z.B. 1000" min="1" step="any">
+          <label class="tr-check"><input type="checkbox" id="tr-whole"> Nur ganze Stücke</label>
+          <button class="btn-analyze btn-discover" id="tr-budget-btn">Verteilen</button>
+        </div>
+        <div class="analysis-box" id="tr-budget-out" hidden></div>
+      </div>
+
+      <!-- News -->
+      <div class="tr-panel" id="tr-panel-news">
+        <div class="tr-row tr-controls">
+          <select id="tr-news-hours" class="tr-input">
+            <option value="24">Letzte 24 h</option>
+            <option value="48" selected>Letzte 48 h</option>
+            <option value="168">Letzte 7 Tage</option>
+          </select>
+          <button class="btn-analyze" id="tr-news-btn">News zu meinen Positionen laden</button>
+        </div>
+        <div class="analysis-box" id="tr-news-out" hidden></div>
+      </div>
+
+      <!-- Copycat -->
+      <div class="tr-panel" id="tr-panel-copycat">
+        <p class="tr-intro">Baut das Portfolio eines Investors aus seiner letzten 13F-Meldung bei der SEC nach – nur US-Aktien, bis zu 45 Tage verzögert.</p>
+        <div class="tr-row tr-controls">
+          <input type="text" id="tr-filer-q" class="tr-input" placeholder="Suchen: Buffett, Burry, Ackman, Bridgewater…" autocomplete="off">
+        </div>
+        <ul class="tr-filers" id="tr-filers"></ul>
+        <div class="analysis-box" id="tr-copycat-out" hidden></div>
+      </div>
+
+      <!-- Kongress -->
+      <div class="tr-panel" id="tr-panel-pelosi">
+        <p class="tr-intro">Aktiengeschäfte von Mitgliedern des US-Repräsentantenhauses (STOCK-Act-Meldungen). Gemeldet bis zu 45 Tage nach dem Trade, Beträge nur als Spannen.</p>
+        <div class="tr-row tr-controls">
+          <input type="text" id="tr-pelosi-members" class="tr-input" placeholder="Leer = alle Abgeordneten">
+          <select id="tr-pelosi-days" class="tr-input">
+            <option value="30">30 Tage</option>
+            <option value="90" selected>90 Tage</option>
+            <option value="365">1 Jahr</option>
+          </select>
+          <button class="btn-analyze" id="tr-pelosi-btn">Meldungen laden</button>
+        </div>
+        <div class="analysis-box" id="tr-pelosi-out" hidden></div>
+      </div>
+
+      <p class="tr-disclaimer">Keine Anlageberatung. Alles sind Vorschläge – es wird nie automatisch gehandelt.</p>
+    </section>
+
   </div>
 
   <!-- ── Tab 3: Ernährung & Kalorien ───────────────────────────────────────── -->
@@ -189,5 +296,6 @@
 
 <script src="https://cdn.jsdelivr.net/npm/fullcalendar@6.1.15/index.global.min.js"></script>
 <script src="/static/app.js"></script>
+<script src="/static/trader.js"></script>
 </body>
 </html>
