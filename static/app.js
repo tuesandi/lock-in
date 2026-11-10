@@ -211,6 +211,54 @@ async function deleteTodo(id) {
   await loadTodos();
 }
 
+// ── Morgenbriefing ───────────────────────────────────────────────────────────
+
+function resetBriefingBtn() {
+  document.getElementById("briefing-btn").textContent = "Briefing abspielen ▶️";
+}
+
+document.getElementById("briefing-btn").addEventListener("click", async () => {
+  if (speechSynthesis.speaking) {
+    speechSynthesis.cancel();
+    resetBriefingBtn();
+    return;
+  }
+
+  const btn = document.getElementById("briefing-btn");
+  const box = document.getElementById("briefing-box");
+  const content = document.getElementById("briefing-content");
+
+  btn.disabled = true;
+  btn.textContent = "Lade Briefing…";
+  box.style.display = "block";
+  content.innerHTML = '<div class="analysis-loading">Erstelle dein Morgenbriefing…</div>';
+
+  try {
+    const res = await fetch("/api/morning-briefing");
+    if (res.status === 401) {
+      window.location.href = "/login";
+      return;
+    }
+    const text = await res.text();
+    if (!res.ok) {
+      content.innerHTML = `<div class="analysis-error">${esc(text)}</div>`;
+      return;
+    }
+    content.innerHTML = `<p>${esc(text)}</p>`;
+
+    const utter = new SpeechSynthesisUtterance(text);
+    utter.lang = "de-DE";
+    utter.onend = resetBriefingBtn;
+    utter.onerror = resetBriefingBtn;
+    speechSynthesis.speak(utter);
+    btn.textContent = "⏹ Stoppen";
+  } catch (err) {
+    content.innerHTML = `<div class="analysis-error">Netzwerkfehler: ${esc(err.message)}</div>`;
+  } finally {
+    btn.disabled = false;
+  }
+});
+
 // ── Termine (FullCalendar) ────────────────────────────────────────────────────
 
 let selectedDate = today;
