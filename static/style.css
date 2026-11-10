@@ -1,6 +1,10 @@
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
-html { scroll-behavior: smooth; }
+html {
+  scroll-behavior: smooth;
+  -webkit-tap-highlight-color: transparent; /* kein grauer Blitz beim Antippen */
+  -webkit-text-size-adjust: 100%;           /* keine Schriftvergrösserung im Querformat */
+}
 
 :root {
   --primary:       #818cf8;
@@ -21,6 +25,11 @@ html { scroll-behavior: smooth; }
   --shadow:        0 4px 8px rgba(0,0,0,.5), 0 12px 32px rgba(0,0,0,.35);
   --radius:        16px;
   --radius-sm:     10px;
+
+  /* Bewegung: starke ease-out-Kurve, kurze Zeiten */
+  --ease-out:      cubic-bezier(0.23, 1, 0.32, 1);
+  --press:         140ms;  /* Knopfdruck */
+  --fade:          200ms;  /* Inhalte einblenden */
 }
 
 body {
@@ -28,8 +37,29 @@ body {
   background: var(--bg);
   color: var(--text);
   min-height: 100vh;
+  min-height: 100dvh;
   padding-bottom: env(safe-area-inset-bottom, 0px);
 }
+
+/* ── Touch-Grundlagen ───────────────────────────────────────────────────────── */
+
+/* Kein 300ms-Tipp-Verzug, Beschriftung von Bedienelementen nicht markierbar */
+button, a, summary, select, label, [role="button"], [role="tab"] {
+  touch-action: manipulation;
+}
+button, summary, [role="button"], [role="tab"] {
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-touch-callout: none;
+}
+
+/* iOS zoomt in Eingabefelder unter 16px und zoomt nicht mehr heraus */
+@media (pointer: coarse) {
+  input, select, textarea { font-size: 16px !important; }
+}
+
+/* Innere Scroll-Listen: am Ende nicht die ganze Seite mitziehen */
+.item-list, .tr-filers, .tr-table-wrap { overscroll-behavior: contain; }
 
 /* ── Header ─────────────────────────────────────────────────────────────────── */
 
@@ -39,12 +69,13 @@ header {
   position: sticky;
   top: 0;
   z-index: 100;
+  padding-top: env(safe-area-inset-top, 0px); /* Notch / Dynamic Island */
 }
 
 .header-inner {
   max-width: 1100px;
   margin: 0 auto;
-  padding: 0 1rem;
+  padding: 0 max(1rem, env(safe-area-inset-right, 0px)) 0 max(1rem, env(safe-area-inset-left, 0px));
   height: 54px;
   display: flex;
   align-items: center;
@@ -79,10 +110,8 @@ h1 {
   border: 1px solid rgba(129,140,248,.25);
   white-space: nowrap;
   flex-shrink: 0;
-  transition: opacity .2s;
+  transition: opacity 150ms ease;
 }
-
-.header-link:hover { opacity: .75; }
 
 /* ── Tab Navigation ─────────────────────────────────────────────────────────── */
 
@@ -91,7 +120,7 @@ h1 {
   border-bottom: 1px solid var(--border);
   display: flex;
   position: sticky;
-  top: 54px;
+  top: calc(54px + env(safe-area-inset-top, 0px));
   z-index: 90;
 }
 
@@ -105,13 +134,14 @@ h1 {
   font-size: .82rem;
   font-weight: 600;
   cursor: pointer;
-  transition: color .2s, border-color .2s;
+  transition: color 150ms ease, border-color 150ms ease, background-color 150ms ease;
   white-space: nowrap;
   line-height: 1;
 }
 
 .tab-btn.active         { color: var(--primary); border-bottom-color: var(--primary); }
-.tab-btn:hover:not(.active) { color: var(--text); }
+/* Breite Tabs nicht skalieren – kurzes Aufhellen als Druck-Feedback */
+.tab-btn:active         { background: var(--card-2); transition-duration: 0ms; }
 
 .tab-pane        { display: none; }
 .tab-pane.active { display: block; }
@@ -196,10 +226,10 @@ main {
   font-weight: 700;
   font-size: .82rem;
   line-height: 1.5;
-  transition: background .15s;
+  transition: background-color 150ms ease, transform var(--press) var(--ease-out);
 }
 
-.btn-icon:hover { background: var(--border-2); }
+.btn-icon:active { transform: scale(.96); background: var(--border-2); }
 
 /* ── Calorie Progress ───────────────────────────────────────────────────────── */
 
@@ -250,8 +280,10 @@ main {
   height: 100%;
   border-radius: 99px;
   background: linear-gradient(90deg, var(--primary-btn), var(--primary));
-  transition: width .45s ease, background .3s;
-  width: 0%;
+  width: 100%;
+  /* clip-path statt width: kein Layout-Neuberechnen, runde Kante bleibt rund */
+  clip-path: inset(0 100% 0 0 round 99px);
+  transition: clip-path 400ms var(--ease-out), background 200ms ease;
 }
 
 .progress-bar.over { background: var(--danger); }
@@ -300,13 +332,12 @@ input[type="time"] {
   font-weight: 700;
   cursor: pointer;
   line-height: 1;
-  transition: opacity .2s, transform .1s;
+  transition: opacity 150ms ease, transform var(--press) var(--ease-out);
   flex-shrink: 0;
   min-width: 40px;
 }
 
-.btn-add:hover  { opacity: .85; }
-.btn-add:active { transform: scale(.94); }
+.btn-add:active { transform: scale(.97); }
 
 /* ── Item Lists ─────────────────────────────────────────────────────────────── */
 
@@ -422,10 +453,10 @@ input[type="time"] {
   padding: .2rem .28rem;
   border-radius: 5px;
   flex-shrink: 0;
-  transition: color .15s;
+  transition: color 150ms ease, transform var(--press) var(--ease-out);
 }
 
-.del-btn:hover { color: var(--danger); }
+.del-btn:active { color: var(--danger); transform: scale(.9); }
 
 /* Badge */
 .badge {
@@ -578,10 +609,10 @@ input[type="time"] {
   font-size: .88rem;
   font-weight: 600;
   text-decoration: none;
-  transition: opacity .2s;
+  transition: opacity 150ms ease, transform var(--press) var(--ease-out);
 }
 
-.btn-scan-link:hover { opacity: .8; }
+.btn-scan-link:active { transform: scale(.98); }
 
 /* ── Finance / Investitionsberater ──────────────────────────────────────────── */
 
@@ -598,13 +629,13 @@ input[type="time"] {
   list-style: none;
   padding: .3rem 0;
   user-select: none;
-  transition: color .2s;
+  transition: color 150ms ease;
 }
 
 .profile-summary::-webkit-details-marker { display: none; }
 .profile-summary::after { content: " ▾"; font-size: .7rem; }
 details[open] .profile-summary::after { content: " ▴"; }
-.profile-summary:hover { color: var(--text); }
+.profile-summary:active { color: var(--text); }
 
 .finance-profile-bar {
   display: flex;
@@ -738,6 +769,14 @@ details[open] .profile-summary::after { content: " ▴"; }
   flex-shrink: 0;
 }
 
+/* Handy: Name + Ticker + Typ oben, Menge × Preis = Wert und Aktionen unten */
+@media (max-width: 580px) {
+  .portfolio-item { row-gap: .3rem; }
+  .portfolio-item-main { flex: 1 1 100%; }
+  .portfolio-item-details { flex: 1 1 auto; min-width: 0; }
+  .portfolio-qty { overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+}
+
 /* Analyze button row */
 .analyze-btn-row {
   display: flex;
@@ -756,10 +795,9 @@ details[open] .profile-summary::after { content: " ▴"; }
   font-weight: 700;
   cursor: pointer;
   letter-spacing: -.01em;
-  transition: opacity .2s, transform .1s;
+  transition: opacity 150ms ease, transform var(--press) var(--ease-out);
 }
 
-.btn-analyze:hover  { opacity: .87; }
 .btn-analyze:active { transform: scale(.98); }
 .btn-analyze:disabled { opacity: .45; cursor: not-allowed; transform: none; }
 
@@ -772,6 +810,20 @@ details[open] .profile-summary::after { content: " ▴"; }
   background: var(--card-2);
   border-radius: var(--radius-sm);
   border: 1px solid var(--border-2);
+}
+
+/* Neue Inhalte (Laden → Ergebnis) blenden kurz ein statt hart zu springen.
+   Gilt für alle Ergebnis-Boxen: Analyse, Briefing, Rebalancing, News, … */
+.analysis-box > *,
+.tr-filing-body > * {
+  transition: opacity var(--fade) var(--ease-out), transform var(--fade) var(--ease-out);
+}
+@starting-style {
+  .analysis-box > *,
+  .tr-filing-body > * {
+    opacity: 0;
+    transform: translateY(4px);
+  }
 }
 
 .analysis-total {
@@ -837,7 +889,7 @@ details[open] .profile-summary::after { content: " ▴"; }
   font-size: .8rem;
   text-decoration: none;
 }
-.logout-link:hover { color: var(--text); }
+.logout-link:active { color: var(--text); }
 
 
 /* ── Trader-Werkzeuge ───────────────────────────────────────────────────────── */
@@ -914,7 +966,7 @@ details[open] .profile-summary::after { content: " ▴"; }
   cursor: pointer;
   padding: .2rem 0;
 }
-.tr-link:hover { text-decoration: underline; }
+.tr-link:active { opacity: .6; }
 .tr-link:disabled { opacity: .5; cursor: default; text-decoration: none; }
 
 /* Tabs */
@@ -941,9 +993,9 @@ details[open] .profile-summary::after { content: " ▴"; }
   border-radius: 7px;
   cursor: pointer;
   white-space: nowrap;
-  transition: background .15s, color .15s;
+  transition: background-color 150ms ease, color 150ms ease, transform var(--press) var(--ease-out);
 }
-.tr-tab:hover { color: var(--text); }
+.tr-tab:active { transform: scale(.97); }
 .tr-tab.active { background: var(--primary-dim); color: var(--primary); }
 .tr-panel { display: none; }
 .tr-panel.active { display: block; }
@@ -1040,7 +1092,7 @@ details[open] .profile-summary::after { content: " ▴"; }
 .tr-news li { padding: .6rem 0; border-bottom: 1px solid var(--border); }
 .tr-news li:last-child { border-bottom: none; }
 .tr-news a { color: var(--text); text-decoration: none; font-size: .85rem; font-weight: 600; line-height: 1.45; }
-.tr-news a:hover { color: var(--primary); }
+.tr-news a:active { color: var(--primary); }
 .tr-news-meta { display: flex; flex-wrap: wrap; gap: .35rem; align-items: center; margin-top: .3rem; font-size: .72rem; color: var(--muted); }
 
 /* Copycat: Investorenliste */
@@ -1064,9 +1116,10 @@ details[open] .profile-summary::after { content: " ▴"; }
   font-size: .82rem;
   font-weight: 600;
   cursor: pointer;
-  transition: border-color .15s;
+  transition: border-color 150ms ease, transform var(--press) var(--ease-out);
 }
-.tr-filers button:hover, .tr-filers button.active { border-color: var(--primary); }
+.tr-filers button.active { border-color: var(--primary); }
+.tr-filers button:active { transform: scale(.98); }
 .tr-filers .tr-sub { font-weight: 500; }
 
 /* Kongress-Meldungen */
@@ -1080,4 +1133,47 @@ tr.mine td { background: var(--primary-dim); }
 @media (max-width: 580px) {
   .tr-target .t-name { display: none; }
   .tr-target .t-ticker { flex: 1 1 auto; }
+}
+
+
+/* ── Hover: nur mit Maus/Trackpad ───────────────────────────────────────────── */
+/* Auf Touch-Geräten "kleben" Hover-Zustände nach dem Antippen. Druck-Feedback
+   für Touch kommt über die :active-Regeln oben. */
+
+@media (hover: hover) and (pointer: fine) {
+  .header-link:hover              { opacity: .75; }
+  .tab-btn:hover:not(.active)     { color: var(--text); }
+  .btn-icon:hover                 { background: var(--border-2); }
+  .btn-add:hover                  { opacity: .85; }
+  .del-btn:hover                  { color: var(--danger); }
+  .btn-scan-link:hover            { opacity: .8; }
+  .profile-summary:hover          { color: var(--text); }
+  .btn-analyze:hover:not(:disabled) { opacity: .87; }
+  .logout-link:hover              { color: var(--text); }
+  .tr-link:hover:not(:disabled)   { text-decoration: underline; }
+  .tr-tab:hover                   { color: var(--text); }
+  .tr-news a:hover                { color: var(--primary); }
+  .tr-filers button:hover         { border-color: var(--primary); }
+}
+
+
+/* FullCalendar bringt eigene, ungeschützte Hover-Regeln mit: auf Touch neutralisieren */
+@media (hover: none) {
+  .fc .fc-button-primary:not(:disabled):not(.fc-button-active):hover {
+    background-color: var(--fc-button-bg-color) !important;
+    border-color: var(--fc-button-border-color) !important;
+  }
+}
+
+
+/* ── Reduzierte Bewegung ────────────────────────────────────────────────────── */
+/* Weniger Bewegung heisst nicht keine: Einblenden bleibt, Verschieben/Skalieren fällt weg */
+
+@media (prefers-reduced-motion: reduce) {
+  html { scroll-behavior: auto; }
+  *:active { transform: none !important; }
+  @starting-style {
+    .analysis-box > *,
+    .tr-filing-body > * { transform: none; }
+  }
 }

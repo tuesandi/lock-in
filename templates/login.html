@@ -2,12 +2,15 @@
 <html lang="de">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, interactive-widget=resizes-content">
+  <meta name="theme-color" content="#141728">
+  <meta name="color-scheme" content="dark">
   <title>Anmelden – Lock In</title>
   <link rel="stylesheet" href="/static/style.css">
   <style>
     .login-wrap {
       min-height: 100vh;
+      min-height: 100dvh;
       display: flex;
       align-items: center;
       justify-content: center;
@@ -45,7 +48,9 @@
       font-size: 1rem;
       font-weight: 700;
       cursor: pointer;
+      transition: transform 140ms var(--ease-out);
     }
+    .login-card button:active { transform: scale(.97); }
     .login-error { color: var(--danger); font-size: .9rem; text-align: center; }
   </style>
 </head>

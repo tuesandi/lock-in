@@ -2,7 +2,9 @@
 <html lang="de">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, interactive-widget=resizes-content">
+  <meta name="theme-color" content="#141728">
+  <meta name="color-scheme" content="dark">
   <title>Lock In</title>
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/fullcalendar@6.1.15/index.global.min.css">
   <link rel="stylesheet" href="/static/style.css">
@@ -48,7 +50,7 @@
           <span class="badge" id="todo-count">0 offen</span>
         </div>
         <form class="add-form" id="todo-form">
-          <input type="text" id="todo-title" placeholder="Neue Aufgabe..." autocomplete="off" required>
+          <input type="text" id="todo-title" enterkeyhint="done" placeholder="Neue Aufgabe..." autocomplete="off" required>
           <input type="date" id="todo-due-date">
           <button type="submit" class="btn-add">+</button>
         </form>
@@ -68,7 +70,7 @@
             <span class="day-panel-title" id="day-panel-title">Heute</span>
           </div>
           <form class="add-form" id="termin-form">
-            <input type="text" id="termin-title" placeholder="Termin hinzufügen..." autocomplete="off" required>
+            <input type="text" id="termin-title" enterkeyhint="done" placeholder="Termin hinzufügen..." autocomplete="off" required>
             <input type="time" id="termin-time">
             <button type="submit" class="btn-add">+</button>
           </form>
@@ -101,21 +103,21 @@
             <option value="Aggressiv">Aggressiv</option>
           </select>
           <input type="text" id="pf-goals" placeholder="Investitionsziele (z.B. Altersvorsorge)">
-          <input type="number" id="pf-budget" placeholder="Budget/Monat ($)" min="0" step="50">
+          <input type="number" inputmode="decimal" enterkeyhint="done" id="pf-budget" placeholder="Budget/Monat ($)" min="0" step="50">
           <button class="btn-icon" id="save-profile-btn">Speichern</button>
         </div>
       </details>
 
       <form class="finance-form" id="portfolio-form">
         <input class="pf-name" type="text" id="pf-name" placeholder="Name (z.B. Apple Inc.)" autocomplete="off" required>
-        <input class="pf-ticker" type="text" id="pf-ticker" placeholder="Ticker (AAPL)" autocomplete="off">
+        <input class="pf-ticker" type="text" id="pf-ticker" autocapitalize="characters" autocorrect="off" spellcheck="false" placeholder="Ticker (AAPL)" autocomplete="off">
         <select class="pf-type" id="pf-type">
           <option value="Aktie">Aktie</option>
           <option value="ETF">ETF</option>
           <option value="Krypto">Krypto</option>
         </select>
-        <input class="pf-qty" type="number" id="pf-quantity" placeholder="Menge" min="0.0001" step="any" required>
-        <input class="pf-price" type="number" id="pf-buy-price" placeholder="Kaufpreis" min="0" step="any" required>
+        <input class="pf-qty" type="number" inputmode="decimal" enterkeyhint="done" id="pf-quantity" placeholder="Menge" min="0.0001" step="any" required>
+        <input class="pf-price" type="number" inputmode="decimal" enterkeyhint="done" id="pf-buy-price" placeholder="Kaufpreis" min="0" step="any" required>
         <button type="submit" class="btn-add" id="pf-submit-btn">+</button>
       </form>
 
@@ -147,15 +149,15 @@
       <details class="profile-details" id="tr-settings">
         <summary class="profile-summary">Regeln &amp; Einstellungen</summary>
         <div class="tr-settings-grid">
-          <label>Basiswährung<input type="text" id="tr-base" maxlength="3"></label>
-          <label>Cash im Depot<input type="number" id="tr-cash" min="0" step="any"></label>
-          <label>Cash-Puffer %<input type="number" id="tr-buffer" min="0" max="99" step="any"></label>
-          <label>Max. pro Titel %<input type="number" id="tr-cap" min="1" max="100" step="any"></label>
-          <label>Max. Order<input type="number" id="tr-max-order" min="0" step="any"></label>
-          <label>Min. Order<input type="number" id="tr-min-order" min="0" step="any"></label>
-          <label>Rebalancing-Band (Punkte)<input type="number" id="tr-band" min="0" step="any"></label>
-          <label>Max. Orders pro Tag<input type="number" id="tr-max-day" min="0" step="1"></label>
-          <label class="tr-wide">Gesperrte Ticker (Komma-getrennt)<input type="text" id="tr-blocked" placeholder="z.B. TSLA, GME"></label>
+          <label>Basiswährung<input type="text" id="tr-base" maxlength="3" autocapitalize="characters" autocorrect="off" spellcheck="false"></label>
+          <label>Cash im Depot<input type="number" inputmode="decimal" enterkeyhint="done" id="tr-cash" min="0" step="any"></label>
+          <label>Cash-Puffer %<input type="number" inputmode="decimal" enterkeyhint="done" id="tr-buffer" min="0" max="99" step="any"></label>
+          <label>Max. pro Titel %<input type="number" inputmode="decimal" enterkeyhint="done" id="tr-cap" min="1" max="100" step="any"></label>
+          <label>Max. Order<input type="number" inputmode="decimal" enterkeyhint="done" id="tr-max-order" min="0" step="any"></label>
+          <label>Min. Order<input type="number" inputmode="decimal" enterkeyhint="done" id="tr-min-order" min="0" step="any"></label>
+          <label>Rebalancing-Band (Punkte)<input type="number" inputmode="decimal" enterkeyhint="done" id="tr-band" min="0" step="any"></label>
+          <label>Max. Orders pro Tag<input type="number" inputmode="numeric" enterkeyhint="done" id="tr-max-day" min="0" step="1"></label>
+          <label class="tr-wide">Gesperrte Ticker (Komma-getrennt)<input type="text" id="tr-blocked" autocapitalize="characters" autocorrect="off" spellcheck="false" placeholder="z.B. TSLA, GME"></label>
           <label class="tr-wide">Beobachtete Abgeordnete (Komma-getrennt)<input type="text" id="tr-members" placeholder="Nancy Pelosi"></label>
           <label class="tr-check"><input type="checkbox" id="tr-fractional"> Bruchteile von Aktien erlaubt</label>
           <label class="tr-check"><input type="checkbox" id="tr-push"> Push bei neuen Kongress-Trades</label>
@@ -197,7 +199,7 @@
       <div class="tr-panel" id="tr-panel-budget">
         <p class="tr-intro">Verteilt einen neuen Betrag nach deinen Zielgewichten – mit Cash-Puffer, Obergrenze pro Titel und Mindestorder.</p>
         <div class="tr-row tr-controls">
-          <input type="number" id="tr-amount" class="tr-input" placeholder="Betrag, z.B. 1000" min="1" step="any">
+          <input type="number" inputmode="decimal" enterkeyhint="done" id="tr-amount" class="tr-input" placeholder="Betrag, z.B. 1000" min="1" step="any">
           <label class="tr-check"><input type="checkbox" id="tr-whole"> Nur ganze Stücke</label>
           <button class="btn-analyze btn-discover" id="tr-budget-btn">Verteilen</button>
         </div>
@@ -221,7 +223,7 @@
       <div class="tr-panel" id="tr-panel-copycat">
         <p class="tr-intro">Baut das Portfolio eines Investors aus seiner letzten 13F-Meldung bei der SEC nach – nur US-Aktien, bis zu 45 Tage verzögert.</p>
         <div class="tr-row tr-controls">
-          <input type="text" id="tr-filer-q" class="tr-input" placeholder="Suchen: Buffett, Burry, Ackman, Bridgewater…" autocomplete="off">
+          <input type="search" enterkeyhint="search" autocorrect="off" id="tr-filer-q" class="tr-input" placeholder="Suchen: Buffett, Burry, Ackman, Bridgewater…" autocomplete="off">
         </div>
         <ul class="tr-filers" id="tr-filers"></ul>
         <div class="analysis-box" id="tr-copycat-out" hidden></div>
@@ -254,7 +256,7 @@
       <div class="card-header">
         <h2>Kalorien</h2>
         <div class="goal-edit">
-          <input type="number" id="calorie-goal-input" min="0" step="50" aria-label="Kalorienziel">
+          <input type="number" inputmode="numeric" enterkeyhint="done" id="calorie-goal-input" min="0" step="50" aria-label="Kalorienziel">
           <span>kcal</span>
           <button class="btn-icon" id="save-goal-btn" title="Speichern">✓</button>
         </div>
@@ -279,7 +281,7 @@
 
       <form class="add-form" id="calorie-form">
         <input type="text" id="food-description" placeholder="Mahlzeit / Snack" autocomplete="off" required>
-        <input type="number" id="food-calories" placeholder="kcal" min="1" required>
+        <input type="number" inputmode="numeric" enterkeyhint="done" id="food-calories" placeholder="kcal" min="1" required>
         <button type="submit" class="btn-add">+</button>
       </form>
 

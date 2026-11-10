@@ -117,7 +117,7 @@ function updateProgress() {
   document.getElementById("remaining-label").textContent = over ? "überschritten" : "verbleibend";
 
   const bar = document.getElementById("calorie-progress");
-  bar.style.width = pct + "%";
+  bar.style.clipPath = `inset(0 ${100 - pct}% 0 0 round 99px)`;
   bar.className = "progress-bar" + (over ? " over" : "");
 }
 
