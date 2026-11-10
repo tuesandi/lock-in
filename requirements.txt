@@ -8,3 +8,9 @@ psycopg2-binary>=2.9.9
 APScheduler>=3.10.0
 yfinance>=0.2.40
 pdfplumber>=0.11
+
+# Sicherheits-Mindestversionen für indirekte Abhängigkeiten (bekannte Lücken
+# in älteren Versionen, gefunden mit pip-audit am 2026-11-10)
+werkzeug>=3.1.9   # Flask-Webserver
+urllib3>=2.8.0    # requests / yfinance
+anyio>=4.14.2     # anthropic (httpx)
