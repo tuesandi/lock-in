@@ -88,67 +88,29 @@
 
     <section class="card" id="finance-section">
       <div class="card-header">
-        <h2>Investitionsberater</h2>
-        <span class="badge" id="portfolio-count">0 Positionen</span>
-      </div>
-
-      <details class="profile-details">
-        <summary class="profile-summary">Risikoprofil bearbeiten</summary>
-        <div class="finance-profile-bar">
-          <select id="pf-risk">
-            <option value="">Risikotoleranz wählen…</option>
-            <option value="Konservativ">Konservativ</option>
-            <option value="Moderat">Moderat</option>
-            <option value="Wachstum">Wachstum</option>
-            <option value="Aggressiv">Aggressiv</option>
-          </select>
-          <input type="text" id="pf-goals" placeholder="Investitionsziele (z.B. Altersvorsorge)">
-          <input type="number" inputmode="decimal" enterkeyhint="done" id="pf-budget" placeholder="Budget/Monat ($)" min="0" step="50">
-          <button class="btn-icon" id="save-profile-btn">Speichern</button>
+        <h2>Finanzen</h2>
+        <div class="card-badges">
+          <span class="badge" id="portfolio-count">0 Positionen</span>
+          <span class="badge" id="tr-currency-badge">CHF</span>
         </div>
-      </details>
-
-      <form class="finance-form" id="portfolio-form">
-        <input class="pf-name" type="text" id="pf-name" placeholder="Name (z.B. Apple Inc.)" autocomplete="off" required>
-        <input class="pf-ticker" type="text" id="pf-ticker" autocapitalize="characters" autocorrect="off" spellcheck="false" placeholder="Ticker (AAPL)" autocomplete="off">
-        <select class="pf-type" id="pf-type">
-          <option value="Aktie">Aktie</option>
-          <option value="ETF">ETF</option>
-          <option value="Krypto">Krypto</option>
-        </select>
-        <input class="pf-qty" type="number" inputmode="decimal" enterkeyhint="done" id="pf-quantity" placeholder="Menge" min="0.0001" step="any" required>
-        <input class="pf-price" type="number" inputmode="decimal" enterkeyhint="done" id="pf-buy-price" placeholder="Kaufpreis" min="0" step="any" required>
-        <button type="submit" class="btn-add" id="pf-submit-btn">+</button>
-      </form>
-
-      <ul class="item-list portfolio-list" id="portfolio-list">
-        <li class="empty-hint">Noch keine Positionen eingetragen.</li>
-      </ul>
-
-      <div class="analyze-btn-row">
-        <button class="btn-analyze" id="analyze-btn">Portfolio analysieren 🧠</button>
-        <button class="btn-analyze btn-discover" id="discover-btn">Neue Anlagen entdecken 🔍</button>
       </div>
 
-      <div class="analysis-box" id="analysis-box" style="display:none">
-        <div id="analysis-content"></div>
-      </div>
-
-      <div class="analysis-box" id="discover-box" style="display:none">
-        <div id="discover-content"></div>
-      </div>
-
-    </section>
-
-    <section class="card trader-card" id="trader-section">
-      <div class="card-header">
-        <h2>Trader-Werkzeuge</h2>
-        <span class="badge" id="tr-currency-badge">CHF</span>
-      </div>
+      <div class="tr-summary pf-summary" id="pf-summary" hidden></div>
 
       <details class="profile-details" id="tr-settings">
-        <summary class="profile-summary">Regeln &amp; Einstellungen</summary>
+        <summary class="profile-summary">Profil &amp; Regeln</summary>
         <div class="tr-settings-grid">
+          <label>Risikotoleranz
+            <select id="pf-risk">
+              <option value="">wählen…</option>
+              <option value="Konservativ">Konservativ</option>
+              <option value="Moderat">Moderat</option>
+              <option value="Wachstum">Wachstum</option>
+              <option value="Aggressiv">Aggressiv</option>
+            </select>
+          </label>
+          <label>Budget pro Monat<input type="number" inputmode="decimal" enterkeyhint="done" id="pf-budget" min="0" step="50"></label>
+          <label class="tr-wide">Investitionsziele<input type="text" id="pf-goals" placeholder="z.B. Altersvorsorge, Vermögensaufbau"></label>
           <label>Basiswährung<input type="text" id="tr-base" maxlength="3" autocapitalize="characters" autocorrect="off" spellcheck="false"></label>
           <label>Cash im Depot<input type="number" inputmode="decimal" enterkeyhint="done" id="tr-cash" min="0" step="any"></label>
           <label>Cash-Puffer %<input type="number" inputmode="decimal" enterkeyhint="done" id="tr-buffer" min="0" max="99" step="any"></label>
@@ -168,16 +130,49 @@
         </div>
       </details>
 
+      <form class="finance-form" id="portfolio-form">
+        <input class="pf-name" type="text" id="pf-name" placeholder="Name (z.B. Apple Inc.)" autocomplete="off" required>
+        <input class="pf-ticker" type="text" id="pf-ticker" autocapitalize="characters" autocorrect="off" spellcheck="false" placeholder="Ticker" autocomplete="off">
+        <select class="pf-type" id="pf-type">
+          <option value="Aktie">Aktie</option>
+          <option value="ETF">ETF</option>
+          <option value="Krypto">Krypto</option>
+        </select>
+        <input class="pf-qty" type="number" inputmode="decimal" enterkeyhint="done" id="pf-quantity" placeholder="Menge" min="0.0001" step="any" required>
+        <input class="pf-price" type="number" inputmode="decimal" enterkeyhint="done" id="pf-buy-price" placeholder="Kaufpreis" min="0" step="any" required>
+        <button type="submit" class="btn-add" id="pf-submit-btn">+</button>
+      </form>
+
+      <ul class="item-list portfolio-list" id="portfolio-list">
+        <li class="empty-hint">Noch keine Positionen eingetragen.</li>
+      </ul>
+
       <div class="tr-tabs" role="tablist">
-        <button class="tr-tab active" data-panel="rebalance" role="tab">Ziel &amp; Rebalancing</button>
+        <button class="tr-tab active" data-panel="ai" role="tab">KI-Analyse</button>
+        <button class="tr-tab" data-panel="rebalance" role="tab">Ziel &amp; Rebalancing</button>
         <button class="tr-tab" data-panel="budget" role="tab">Neues Geld</button>
         <button class="tr-tab" data-panel="news" role="tab">News</button>
         <button class="tr-tab" data-panel="copycat" role="tab">Copycat 13F</button>
         <button class="tr-tab" data-panel="pelosi" role="tab">Kongress</button>
       </div>
 
+      <!-- KI-Analyse -->
+      <div class="tr-panel active" id="tr-panel-ai">
+        <p class="tr-intro">Claude beurteilt dein Portfolio mit den aktuellen Werten in deiner Basiswährung, deinen Zielgewichten und den neuesten Schlagzeilen.</p>
+        <div class="analyze-btn-row">
+          <button class="btn-analyze" id="analyze-btn">Portfolio analysieren 🧠</button>
+          <button class="btn-analyze btn-discover" id="discover-btn">Neue Anlagen entdecken 🔍</button>
+        </div>
+        <div class="analysis-box" id="analysis-box" style="display:none">
+          <div id="analysis-content"></div>
+        </div>
+        <div class="analysis-box" id="discover-box" style="display:none">
+          <div id="discover-content"></div>
+        </div>
+      </div>
+
       <!-- Ziel & Rebalancing -->
-      <div class="tr-panel active" id="tr-panel-rebalance">
+      <div class="tr-panel" id="tr-panel-rebalance">
         <div class="tr-subhead">
           <span>Zielgewichte <span class="tr-hint" id="tr-target-source"></span></span>
           <button class="tr-link" id="tr-from-portfolio">Aktuelles Portfolio übernehmen</button>

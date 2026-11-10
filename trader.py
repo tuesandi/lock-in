@@ -246,15 +246,21 @@ def fx_rate(cur, base):
     return cached(("fx", cur, base), 900, load, keep=lambda v: v is not None)
 
 
-def quote(ticker, asset_type, base):
-    """(Preis in Basiswährung, Originalwährung) oder (None, None)."""
+def market(ticker, asset_type):
+    """Kurs in Originalwährung: {"price", "change_pct", "currency"} (5 Min. gecacht)."""
     def load():
         for _ in range(2):  # yfinance scheitert unter Last manchmal einmalig
             m = fetch_crypto_data(ticker) if is_crypto(asset_type) else fetch_stock_data(yf_symbol(ticker))
             if m.get("price"):
                 break
-        return m.get("price"), m.get("currency")
-    price, cur = cached(("q", ticker, is_crypto(asset_type)), 300, load, keep=lambda v: bool(v[0]))
+        return m
+    return cached(("q", ticker, is_crypto(asset_type)), 300, load, keep=lambda m: bool(m.get("price")))
+
+
+def quote(ticker, asset_type, base):
+    """(Preis in Basiswährung, Originalwährung) oder (None, None)."""
+    m = market(ticker, asset_type)
+    price, cur = m.get("price"), m.get("currency")
     if not price:
         return None, None
     rate = fx_rate(cur, base)
@@ -326,6 +332,56 @@ def in_currency(res, cur):
 
 def err(msg, code=400):
     return jsonify({"error": msg}), code
+
+
+# ── Live-Positionen in Basiswährung ───────────────────────────────────────────
+
+def positions_data(cfg=None):
+    """Jede Position mit aktuellem Kurs, Wert in Basiswährung, Gewinn und Gewicht.
+
+    Annahme: der Kaufpreis ist in derselben Währung erfasst, in der die Börse
+    den Titel handelt (so zeigen es Broker als "Einstandskurs")."""
+    cfg = cfg or load_settings()
+    base = cfg["base_currency"]
+    rows = load_portfolio_rows()
+    with ThreadPoolExecutor(max_workers=4) as ex:
+        marks = list(ex.map(lambda r: market((r.get("ticker") or "").strip().upper(), r.get("asset_type"))
+                            if (r.get("ticker") or "").strip() else {}, rows))
+    out, missing = [], []
+    tot = {"value": 0.0, "cost": 0.0, "day": 0.0}
+    for r, m in zip(rows, marks):
+        p = {k: r.get(k) for k in ("id", "asset_name", "ticker", "asset_type", "quantity", "buy_price", "notes")}
+        price, cur, chg = m.get("price"), m.get("currency"), m.get("change_pct")
+        rate = fx_rate(cur, base) if price else None
+        if not price or rate is None:
+            p.update(price=None, currency=cur, value=None)
+            missing.append(r.get("ticker") or r["asset_name"])
+            out.append(p)
+            continue
+        qty, buy = float(r["quantity"]), float(r["buy_price"] or 0)
+        value = qty * price * rate
+        cost = qty * buy * rate
+        day = value * chg / (100 + chg) if chg is not None else 0.0
+        p.update(price=round(price, 4), currency=cur, change_pct=chg, fx=rate,
+                 value=round(value, 2), cost=round(cost, 2), gain=round(value - cost, 2),
+                 gain_pct=round(100 * (price - buy) / buy, 2) if buy else None,
+                 day_change=round(day, 2))
+        tot["value"] += value
+        tot["cost"] += cost
+        tot["day"] += day
+        out.append(p)
+    for p in out:
+        p["weight"] = round(100 * p["value"] / tot["value"], 2) if p.get("value") and tot["value"] else None
+    total = {"value": round(tot["value"], 2), "cost": round(tot["cost"], 2),
+             "gain": round(tot["value"] - tot["cost"], 2),
+             "gain_pct": round(100 * (tot["value"] - tot["cost"]) / tot["cost"], 2) if tot["cost"] else None,
+             "day_change": round(tot["day"], 2)}
+    return {"positions": out, "total": total, "currency": base, "missing": missing}
+
+
+@trader_bp.route("/api/trader/positions", methods=["GET"])
+def positions():
+    return jsonify(positions_data())
 
 
 # ── Einstellungen & Zielgewichte ──────────────────────────────────────────────
@@ -485,25 +541,34 @@ def _news_ciks(fetcher):
     return cached(("ciks",), 86400, lambda: N.cik_map(fetcher, state))
 
 
-@trader_bp.route("/api/trader/news", methods=["GET"])
-def news():
-    try:
-        hours = max(1, min(int(request.args.get("hours", 48)), 24 * 14))
-    except ValueError:
-        hours = 48
-    watch, kinds = {}, {}
-    for r in load_portfolio_rows():
+def news_watch(rows):
+    """{Yahoo-Ticker: Name} für alle Positionen; Krypto als BTC-USD."""
+    watch = {}
+    for r in rows:
         t = (r.get("ticker") or "").strip().upper()
         if not t:
             continue
         if is_crypto(r.get("asset_type")):
             t = f"{t}-USD" if "-" not in t else t
         watch.setdefault(t, r["asset_name"])
-        kinds[t] = r.get("asset_type")
-    if not watch:
-        return jsonify({"items": [], "errors": ["Keine Positionen mit Ticker."], "sec": False})
+    return watch
 
-    ua = E.user_agent(None, None)
+
+@trader_bp.route("/api/trader/news", methods=["GET"])
+def news():
+    try:
+        hours = max(1, min(int(request.args.get("hours", 48)), 24 * 14))
+    except ValueError:
+        hours = 48
+    return jsonify(collect_news(news_watch(load_portfolio_rows()), hours))
+
+
+def collect_news(watch, hours=48, sec=True):
+    """Yahoo-Schlagzeilen (+ SEC 8-K, wenn SEC_USER_AGENT gesetzt) für watch."""
+    if not watch:
+        return {"items": [], "errors": ["Keine Positionen mit Ticker."], "sec": False, "hours": hours}
+
+    ua = E.user_agent(None, None) if sec else None
     fetcher = N.Fetcher(sec_ua=ua)
     errors = []
     state = {}
@@ -529,7 +594,7 @@ def news():
     items = N.dedupe(items)
     now = _dt.datetime.now(_dt.timezone.utc)
     sel = N.select(items, {}, now, hours=hours, show_all=True)
-    return jsonify({"items": N._json_ready(sel), "errors": errors, "sec": bool(ua), "hours": hours})
+    return {"items": N._json_ready(sel), "errors": errors, "sec": bool(ua), "hours": hours}
 
 
 # ── Copycat: 13F-Portfolios berühmter Investoren ──────────────────────────────

@@ -392,27 +392,79 @@ function initCalendar() {
 
 let portfolio = [];
 let editingPortfolioId = null;
+let live = null;          // Antwort von /api/trader/positions (Kurse + Werte in Basiswährung)
+let liveRequest = 0;
+
+const fmtNum = (v, d = 2) =>
+  Number(v).toLocaleString("de-CH", { minimumFractionDigits: d, maximumFractionDigits: d });
 
 async function loadPortfolio() {
   portfolio = await api("/api/portfolio");
   renderPortfolio();
   document.getElementById("portfolio-count").textContent = `${portfolio.length} Position${portfolio.length !== 1 ? "en" : ""}`;
+  loadLivePositions();
+}
+
+// Live-Kurse nachladen (dauert ein paar Sekunden); die Liste steht schon vorher
+async function loadLivePositions() {
+  const req = ++liveRequest;
+  try {
+    const data = await api("/api/trader/positions");
+    if (req !== liveRequest || !data || data.error) return;
+    live = data;
+    renderPortfolio();
+    renderPortfolioSummary();
+  } catch {}
+}
+
+function renderPortfolioSummary() {
+  const box = document.getElementById("pf-summary");
+  if (!live || !live.total || !live.total.value) {
+    box.hidden = true;
+    return;
+  }
+  const t = live.total;
+  const cur = live.currency;
+  const cls = (v) => (v > 0 ? "pos" : v < 0 ? "neg" : "");
+  const sign = (v) => (v > 0 ? "+" : "");
+  box.innerHTML = `
+    <div class="tr-stat"><b>${fmtNum(t.value)} ${esc(cur)}</b><span>Aktueller Wert</span></div>
+    <div class="tr-stat"><b class="${cls(t.gain)}">${sign(t.gain)}${fmtNum(t.gain)}</b><span>Gewinn ${t.gain_pct != null ? `${sign(t.gain_pct)}${fmtNum(t.gain_pct, 1)} %` : ""}</span></div>
+    <div class="tr-stat"><b class="${cls(t.day_change)}">${sign(t.day_change)}${fmtNum(t.day_change)}</b><span>Heute</span></div>`;
+  box.hidden = false;
 }
 
 function renderPortfolio() {
   const list = document.getElementById("portfolio-list");
   if (!portfolio.length) {
     list.innerHTML = '<li class="empty-hint">Noch keine Positionen eingetragen.</li>';
+    document.getElementById("pf-summary").hidden = true;
     return;
   }
+  const liveById = {};
+  ((live && live.positions) || []).forEach((p) => { liveById[p.id] = p; });
   list.innerHTML = portfolio
     .map((p) => {
-      const total = (Number(p.quantity) * Number(p.buy_price)).toLocaleString("de-CH", {
-        minimumFractionDigits: 2,
-        maximumFractionDigits: 2,
-      });
+      const lp = liveById[p.id];
       const qtyFmt = Number(p.quantity).toLocaleString("de-CH", { maximumFractionDigits: 6 });
-      const priceFmt = Number(p.buy_price).toLocaleString("de-CH", { minimumFractionDigits: 2, maximumFractionDigits: 4 });
+      let details;
+      if (lp && lp.value != null) {
+        const gain = lp.gain_pct;
+        const pill = gain == null ? "" :
+          `<span class="tr-pill ${gain >= 0 ? "pass" : "block"}">${gain > 0 ? "+" : ""}${fmtNum(gain, 1)} %</span>`;
+        details = `
+          <span class="portfolio-qty" title="Kaufpreis ${fmtNum(p.buy_price, 2)} ${esc(lp.currency || "")}">${qtyFmt} × ${fmtNum(lp.price)} ${esc(lp.currency || "")}</span>
+          <span class="portfolio-sep">=</span>
+          <span class="portfolio-total">${fmtNum(lp.value)} ${esc(live.currency)}</span>
+          ${pill}`;
+      } else {
+        const cost = fmtNum(Number(p.quantity) * Number(p.buy_price));
+        const priceFmt = Number(p.buy_price).toLocaleString("de-CH", { minimumFractionDigits: 2, maximumFractionDigits: 4 });
+        details = `
+          <span class="portfolio-qty">${qtyFmt} × ${priceFmt}</span>
+          <span class="portfolio-sep">≈</span>
+          <span class="portfolio-total portfolio-cost" title="Einstandswert, Live-Kurs wird geladen">${cost}</span>`;
+      }
       return `
       <li class="portfolio-item" data-id="${p.id}">
         <div class="portfolio-item-main">
@@ -420,10 +472,7 @@ function renderPortfolio() {
           ${p.ticker ? `<span class="portfolio-ticker">${esc(p.ticker.toUpperCase())}</span>` : ""}
           <span class="portfolio-type-badge">${esc(p.asset_type)}</span>
         </div>
-        <div class="portfolio-item-details">
-          <span class="portfolio-qty">${qtyFmt} × ${priceFmt}</span>
-          <span class="portfolio-sep">≈</span>
-          <span class="portfolio-total">${total}</span>
+        <div class="portfolio-item-details">${details}
         </div>
         <div class="portfolio-item-actions">
           <button class="btn-icon edit-btn" data-id="${p.id}" title="Bearbeiten">✎</button>
@@ -496,23 +545,35 @@ async function loadProfile() {
     if (!p) return;
     if (p.risk_tolerance) document.getElementById("pf-risk").value = p.risk_tolerance;
     if (p.investment_goals) document.getElementById("pf-goals").value = p.investment_goals;
-    if (p.monthly_budget) document.getElementById("pf-budget").value = p.monthly_budget;
+    if (p.monthly_budget) {
+      document.getElementById("pf-budget").value = p.monthly_budget;
+      prefillBudgetAmount(p.monthly_budget);
+    }
   } catch {}
 }
 
-document.getElementById("save-profile-btn").addEventListener("click", async () => {
+// "Neues Geld" mit dem Monatsbudget vorbelegen, solange dort nichts eingetippt wurde
+function prefillBudgetAmount(budget) {
+  const amount = document.getElementById("tr-amount");
+  if (amount && budget && (!amount.value || amount.dataset.prefilled)) {
+    amount.value = budget;
+    amount.dataset.prefilled = "1";
+  }
+}
+document.getElementById("tr-amount").addEventListener("input", (e) => { delete e.target.dataset.prefilled; });
+
+// Wird vom gemeinsamen "Speichern"-Knopf unter "Profil & Regeln" aufgerufen (trader.js)
+async function saveProfile() {
   const risk = document.getElementById("pf-risk").value || null;
   const goals = document.getElementById("pf-goals").value.trim() || null;
   const budget = parseFloat(document.getElementById("pf-budget").value) || null;
-  await api("/api/financial-profile", {
+  const res = await api("/api/financial-profile", {
     method: "PUT",
     body: JSON.stringify({ risk_tolerance: risk, investment_goals: goals, monthly_budget: budget }),
   });
-  const btn = document.getElementById("save-profile-btn");
-  const orig = btn.textContent;
-  btn.textContent = "✓ Gespeichert";
-  setTimeout(() => { btn.textContent = orig; }, 2000);
-});
+  if (res && !res.error) prefillBudgetAmount(budget);
+  return res;
+}
 
 // ── Portfolio Analysis ────────────────────────────────────────────────────────
 
@@ -580,10 +641,9 @@ document.getElementById("analyze-btn").addEventListener("click", async () => {
     } else {
       let html = "";
       if (result.portfolio_value) {
-        const valFmt = Number(result.portfolio_value).toLocaleString("de-CH", {
-          minimumFractionDigits: 2, maximumFractionDigits: 2,
-        });
-        html += `<div class="analysis-total">Gesamtportfolio-Wert (Einkaufspreise): $${valFmt}</div>`;
+        const t = result.total || {};
+        const gain = t.gain_pct != null ? ` · ${t.gain_pct > 0 ? "+" : ""}${fmtNum(t.gain_pct, 1)} % seit Kauf` : "";
+        html += `<div class="analysis-total">Aktueller Portfoliowert: ${fmtNum(result.portfolio_value)} ${esc(result.currency || "")}${gain}</div>`;
       }
       html += renderAnalysis(result.analysis);
       content.innerHTML = html;
@@ -592,7 +652,7 @@ document.getElementById("analyze-btn").addEventListener("click", async () => {
     content.innerHTML = `<div class="analysis-error">Netzwerkfehler: ${esc(err.message)}</div>`;
   } finally {
     btn.disabled = false;
-    btn.textContent = "Portfolio jetzt analysieren 🧠";
+    btn.textContent = "Portfolio analysieren 🧠";
   }
 });
 

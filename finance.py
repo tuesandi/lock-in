@@ -77,120 +77,83 @@ def fetch_crypto_data(ticker: str) -> dict:
         return {"price": None, "change_pct": None, "currency": None}
 
 
-def fetch_news(ticker: str, asset_type: str) -> list[str]:
-    """Latest 3 headlines via Finnhub (skipped if no API key)."""
-    api_key = os.environ.get("FINNHUB_API_KEY", "").strip()
-    if not api_key or not ticker:
-        return []
+def _fmt(v, cur, d=2):
+    if v is None:
+        return "n/a"
+    return f"{v:,.{d}f} {cur}".replace(",", "'")
+
+
+def _headlines(rows, per_ticker=3):
+    """Neueste Yahoo-Schlagzeilen pro Ticker (ohne API-Key), letzte 7 Tage."""
+    from trader import collect_news, news_watch
     try:
-        if "crypto" in asset_type.lower():
-            url = f"https://finnhub.io/api/v1/news?category=crypto&token={api_key}"
-        else:
-            from_date = (date.today() - timedelta(days=30)).isoformat()
-            to_date = date.today().isoformat()
-            url = (
-                f"https://finnhub.io/api/v1/company-news"
-                f"?symbol={ticker}&from={from_date}&to={to_date}&token={api_key}"
-            )
-        articles = requests.get(url, timeout=8).json()
-        if isinstance(articles, list):
-            return [a["headline"] for a in articles[:3] if a.get("headline")]
+        res = collect_news(news_watch(rows), hours=24 * 7, sec=False)
     except Exception:
-        pass
-    return []
-
-
-def fetch_market_data(position: dict) -> dict:
-    """Merge price, change %, gain/loss and news for one portfolio position."""
-    ticker = (position.get("ticker") or "").strip()
-    asset_type = (position.get("asset_type") or "").lower()
-
-    if any(x in asset_type for x in ("crypto", "krypto", "Krypto", "Crypto")):
-        market = fetch_crypto_data(ticker)
-    else:
-        market = fetch_stock_data(ticker)
-
-    news = fetch_news(ticker, asset_type)
-
-    current_price = market["price"]
-    buy_price = _to_float(position.get("buy_price") or 0)
-    quantity = _to_float(position.get("quantity") or 0)
-
-    total_value = round(current_price * quantity, 2) if current_price else None
-    gain_loss_pct = (
-        round((current_price - buy_price) / buy_price * 100, 2)
-        if current_price and buy_price
-        else None
-    )
-
-    return {
-        **{k: _to_float(v) for k, v in position.items()},
-        "current_price": current_price,
-        "change_pct_today": market["change_pct"],
-        "currency": market["currency"],
-        "total_value": total_value,
-        "gain_loss_pct": gain_loss_pct,
-        "news": news,
-    }
+        return {}
+    out = {}
+    for it in res["items"]:
+        for t in (it.get("touches") or [it["ticker"]]):
+            key = t[:-4] if t.endswith("-USD") else t
+            if len(out.setdefault(key, [])) < per_ticker:
+                out[key].append(it["title"])
+    return out
 
 
 # ── AI Analysis Endpoint ───────────────────────────────────────────────────────
 
 @finance_bp.route("/api/finance/analyze", methods=["POST"])
 def analyze_portfolio():
+    from trader import load_settings, load_targets, positions_data
+
     api_key = os.environ.get("ANTHROPIC_API_KEY", "").strip()
     if not api_key:
         return jsonify({"error": "ANTHROPIC_API_KEY not set"}), 500
 
     conn = get_db()
     cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
-    cur.execute("SELECT * FROM user_portfolio ORDER BY asset_type ASC, asset_name ASC")
-    raw_positions = [dict(r) for r in cur.fetchall()]
     cur.execute("SELECT * FROM user_financial_profile WHERE id = 1")
     profile_row = cur.fetchone()
     cur.close()
     conn.close()
-
-    if not raw_positions:
-        return jsonify({"error": "Portfolio ist leer – bitte zuerst Positionen hinzufügen."}), 400
-
     profile = _row_to_dict(profile_row) if profile_row else {}
 
-    # Fetch live market data for each position
-    enriched = [fetch_market_data(p) for p in raw_positions]
+    cfg = load_settings()
+    data = positions_data(cfg)
+    if not data["positions"]:
+        return jsonify({"error": "Portfolio ist leer – bitte zuerst Positionen hinzufügen."}), 400
+    base = data["currency"]
+    total = data["total"]
+    targets = {t["ticker"]: t["weight"] for t in load_targets()}
+    news = _headlines(data["positions"])
 
-    # Calculate portfolio totals
-    total_value = sum(p["total_value"] for p in enriched if p["total_value"] is not None)
-    portfolio_value_str = f"${total_value:,.2f}" if total_value else "unbekannt"
-
-    # Build position blocks for the prompt
-    position_blocks = []
-    for p in enriched:
-        buy = p.get("buy_price")
-        curr = p.get("current_price")
-        qty = p.get("quantity")
-        change = p.get("change_pct_today")
-        gl = p.get("gain_loss_pct")
-        tv = p.get("total_value")
-        news_lines = "\n  ".join(p["news"]) if p["news"] else "keine Schlagzeilen verfügbar"
-        currency = p.get("currency") or "USD"
-
-        position_blocks.append(
-            f"**{p['asset_name']} ({p.get('ticker', '–')})** | {p['asset_type']}\n"
-            f"  Menge: {qty} × Kaufkurs {buy} {currency}\n"
-            f"  Aktueller Kurs: {curr} {currency}"
-            + (f" ({change:+.2f}% heute)" if change is not None else "")
-            + f"\n  Gewinn/Verlust seit Kauf: " + (f"{gl:+.2f}%" if gl is not None else "n/a")
-            + f"\n  Positionswert: " + (f"${tv:,.2f}" if tv else "n/a")
-            + (f"\n  Neueste Schlagzeilen:\n  {news_lines}" if p["news"] else "")
-        )
-
-    positions_text = "\n\n".join(position_blocks)
+    # Positionsblöcke für den Prompt: Werte in Basiswährung, Kurse in Originalwährung
+    blocks = []
+    for p in sorted(data["positions"], key=lambda p: -(p.get("value") or 0)):
+        t = (p.get("ticker") or "").upper()
+        cur_ = p.get("currency") or "?"
+        lines = [f"**{p['asset_name']} ({t or '–'})** | {p['asset_type']}",
+                 f"  Menge: {p['quantity']} × Kaufkurs {p['buy_price']} {cur_}"]
+        if p.get("price") is None:
+            lines.append("  Aktueller Kurs: nicht verfügbar")
+        else:
+            chg = p.get("change_pct")
+            lines.append(f"  Aktueller Kurs: {p['price']} {cur_}" + (f" ({chg:+.2f}% heute)" if chg is not None else ""))
+            lines.append("  Gewinn/Verlust seit Kauf: "
+                         + (f"{p['gain_pct']:+.2f}% ({_fmt(p['gain'], base)})" if p.get("gain_pct") is not None else "n/a"))
+            lines.append(f"  Positionswert: {_fmt(p['value'], base)} = {p['weight']:.1f}% des Portfolios"
+                         + (f" (Ziel: {targets[t]:.1f}%)" if t in targets else ""))
+        if news.get(t):
+            lines.append("  Neueste Schlagzeilen:\n  " + "\n  ".join(news[t]))
+        blocks.append("\n".join(lines))
+    positions_text = "\n\n".join(blocks)
 
     risk = profile.get("risk_tolerance") or "nicht angegeben"
     goals = profile.get("investment_goals") or "nicht angegeben"
     budget = profile.get("monthly_budget")
-    budget_str = f"${budget:,.2f}/Monat" if budget else "nicht angegeben"
+    budget_str = f"{_fmt(budget, base, 0)}/Monat" if budget else "nicht angegeben"
+    target_note = ("Zielgewichte sind hinterlegt (in Klammern). Beziehe die Abweichung davon ein."
+                   if targets else "Es sind keine Zielgewichte hinterlegt.")
+    cash = cfg.get("cash") or 0
 
     prompt = f"""Du bist ein hochdisziplinierter, risikobewusster Finanzanalyst. Dein Arbeitsprinzip: Schrittweises Denken (Chain of Thought) vor jeder Empfehlung – dann präzise, konkrete Handlungsanweisungen.
 
@@ -199,7 +162,9 @@ def analyze_portfolio():
 - Investitionsziele: {goals}
 - Monatliches Budget: {budget_str}
 
-## Portfolio (Gesamtwert Einkauf: ~{portfolio_value_str})
+## Portfolio
+Aktueller Wert: {_fmt(total['value'], base)} (Einstand {_fmt(total['cost'], base)}, {total['gain_pct'] if total['gain_pct'] is not None else 0:+.2f}%), Cash im Depot: {_fmt(cash, base)}.
+Alle Werte in {base} umgerechnet; Kurse in der Handelswährung des Titels. {target_note}
 
 {positions_text}
 
@@ -208,13 +173,13 @@ def analyze_portfolio():
 Analysiere das Portfolio auf Deutsch in genau diesen drei Abschnitten:
 
 ### 1. Portfolio-Gesamtlage
-Gesamtwert, Diversifikation nach Anlageklasse, konkrete Klumpenrisiken (welche Position dominiert zu stark und warum ist das problematisch?).
+Gesamtwert, Diversifikation nach Anlageklasse, Region und Währung, konkrete Klumpenrisiken (welche Position dominiert zu stark und warum ist das problematisch? Achte auf Überschneidungen zwischen ETFs und Einzelaktien).
 
 ### 2. Positions-Analyse
 Für jede Position:
 **[TICKER] → HALTEN / KAUFEN/AUFSTOCKEN / VERKAUFEN**
-Denke: (1-2 Sätze Chain of Thought: Was sagt Kursverlauf + News zusammen?)
-Aktion: (Konkrete Handlungsanweisung mit Stückzahl – z.B. „Verkaufe 2 von 5 Anteilen (40 %), ca. 340 €. Ziel: Gewinnmitnahme nach +28 %." oder „Stocke um 3 Stück / ca. 480 € auf – Kostendurchschnitt bei aktuellem Rücksetzer nutzen." oder „Halten, kein Handlungsbedarf.")
+Denke: (1-2 Sätze Chain of Thought: Was sagen Kursverlauf, Gewicht und News zusammen?)
+Aktion: (Konkrete Handlungsanweisung mit Stückzahl und Betrag in {base} – z.B. „Verkaufe 2 von 5 Anteilen (40 %), ca. 340 {base}." oder „Halten, kein Handlungsbedarf.")
 
 ### 3. Impuls-Check
 Max. 3 Sätze: Warum die langfristige Strategie (Profil: {risk}, Ziel: {goals}) Vorrang vor kurzfristigen Marktreaktionen hat."""
@@ -235,8 +200,9 @@ Max. 3 Sätze: Warum die langfristige Strategie (Profil: {risk}, Ziel: {goals}) 
 
     return jsonify({
         "analysis": analysis,
-        "portfolio_value": total_value,
-        "positions": enriched,
+        "portfolio_value": total["value"],
+        "currency": base,
+        "total": total,
     })
 
 
@@ -248,32 +214,36 @@ def recommend_investments():
     if not api_key:
         return jsonify({"error": "ANTHROPIC_API_KEY not set"}), 500
 
+    from trader import load_settings, positions_data
+
     conn = get_db()
     cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
-    cur.execute("SELECT * FROM user_portfolio ORDER BY asset_type ASC, asset_name ASC")
-    raw_positions = [dict(r) for r in cur.fetchall()]
     cur.execute("SELECT * FROM user_financial_profile WHERE id = 1")
     profile_row = cur.fetchone()
     cur.close()
     conn.close()
 
     profile = _row_to_dict(profile_row) if profile_row else {}
+    data = positions_data(load_settings())
+    base = data["currency"]
     risk = profile.get("risk_tolerance") or "nicht angegeben"
     goals = profile.get("investment_goals") or "nicht angegeben"
     budget = profile.get("monthly_budget")
-    budget_str = f"${float(budget):,.0f}/Monat" if budget else "nicht angegeben"
+    budget_str = f"{_fmt(budget, base, 0)}/Monat" if budget else "nicht angegeben"
 
-    if raw_positions:
-        type_counts: dict = {}
-        for p in raw_positions:
-            t = p.get("asset_type", "Unbekannt")
-            type_counts[t] = type_counts.get(t, 0) + 1
+    if data["positions"]:
+        type_weight: dict = {}
+        for p in data["positions"]:
+            t = p.get("asset_type") or "Unbekannt"
+            type_weight[t] = type_weight.get(t, 0) + (p.get("weight") or 0)
         portfolio_lines = "\n".join(
-            f"- {p['asset_name']} ({p.get('ticker', '–')}) [{p['asset_type']}]: "
-            f"{_to_float(p['quantity'])} Stück zu {_to_float(p['buy_price'])}"
-            for p in raw_positions
+            f"- {p['asset_name']} ({p.get('ticker') or '–'}) [{p['asset_type']}]: "
+            + (f"{_fmt(p['value'], base)} = {p['weight']:.1f}% des Portfolios, gehandelt in {p['currency']}"
+               if p.get("value") is not None else "Kurs nicht verfügbar")
+            for p in sorted(data["positions"], key=lambda p: -(p.get("value") or 0))
         )
-        type_summary = ", ".join(f"{k}: {v}×" for k, v in type_counts.items())
+        type_summary = ", ".join(f"{k}: {v:.0f}%" for k, v in type_weight.items())
+        portfolio_lines += f"\nGesamtwert: {_fmt(data['total']['value'], base)}"
     else:
         portfolio_lines = "Noch kein Portfolio vorhanden."
         type_summary = "leer"
@@ -296,9 +266,9 @@ Empfiehl genau 3-4 neue Investments auf Deutsch. Format pro Empfehlung:
 **[NAME] ([BÖRSENTICKER])**
 Kategorie: ETF / Aktie / Anleihe / Sonstiges
 Warum: (2 Sätze: Welche Lücke füllt dies? Warum passt es zu Risikoprofil und Zielen?)
-Einstieg: (Konkrete Empfehlung mit Stückzahl und Betrag, z.B. „3 Anteile / ca. 270 €")
+Einstieg: (Konkrete Empfehlung mit Stückzahl und Betrag in {base}, z.B. „3 Anteile / ca. 270 {base}")
 
-Wichtig: Nutze echte, handelbare Börsenticker (z.B. IWDA.AS für MSCI World auf Euronext Amsterdam, EMIM.L für Emerging Markets auf LSE, VUSA.L für S&P 500 auf LSE, XDWD.DE für MSCI World auf Xetra). Bevorzuge für langfristige Anleger kosteneffiziente, liquide ETFs mit niedrigen TERs."""
+Wichtig: Prüfe Überschneidungen mit bestehenden ETFs, bevor du etwas empfiehlst. Nutze echte, handelbare Börsenticker im Yahoo-Format (z.B. IWDA.L für MSCI World in USD auf LSE, IWDA.AS für MSCI World auf Euronext Amsterdam, EMIM.L für Emerging Markets auf LSE, VUSA.L für S&P 500 auf LSE, XDWD.DE für MSCI World auf Xetra). Bevorzuge für langfristige Anleger kosteneffiziente, liquide ETFs mit niedrigen TERs."""
 
     try:
         client = anthropic.Anthropic(api_key=api_key)

@@ -101,13 +101,19 @@
     body.fractional = $("tr-fractional").checked;
     body.pelosi_push = $("tr-push").checked;
     const btn = $("tr-save-settings");
-    const res = await api("/api/trader/settings", { method: "PUT", body: JSON.stringify(body) }).catch(() => null);
-    if (!res || res.error) {
-      btn.textContent = res && res.error ? res.error : "Fehler";
+    const oldBase = cur();
+    // Ein Knopf für Profil (app.js) und Regeln
+    const [res, profile] = await Promise.all([
+      api("/api/trader/settings", { method: "PUT", body: JSON.stringify(body) }).catch(() => null),
+      typeof saveProfile === "function" ? saveProfile().catch(() => null) : Promise.resolve({}),
+    ]);
+    if (!res || res.error || !profile || profile.error) {
+      btn.textContent = (res && res.error) || (profile && profile.error) || "Fehler";
     } else {
       settings = res;
       fillSettings();
       btn.textContent = "✓ Gespeichert";
+      if (cur() !== oldBase && typeof loadLivePositions === "function") loadLivePositions();
     }
     setTimeout(() => { btn.textContent = "Speichern"; }, 2500);
   });
