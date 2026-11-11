@@ -1203,3 +1203,32 @@ tr.mine td { background: var(--primary-dim); }
     .tr-filing-body > * { transform: none; }
   }
 }
+
+
+/* ── Analyse: Aktionen & PDF-Druck ──────────────────────────────────────────── */
+
+.analysis-actions { display: flex; justify-content: flex-end; margin-top: 1rem; }
+.analysis-truncated { margin-top: .8rem; }
+#print-sheet { display: none; }
+
+@media print {
+  body.printing > *:not(#print-sheet) { display: none !important; }
+  body.printing { background: #fff; padding: 0; }
+  body.printing #print-sheet {
+    display: block;
+    color: #111;
+    font-size: 11pt;
+    line-height: 1.5;
+  }
+  #print-sheet .print-title { font-size: 18pt; color: #111; margin-bottom: .2rem; }
+  #print-sheet .print-meta { font-size: 9pt; color: #555; margin-bottom: 1.2rem; }
+  #print-sheet .analysis-heading { color: #3730a3; font-size: 13pt; break-after: avoid; }
+  #print-sheet .analysis-para,
+  #print-sheet .analysis-total { color: #222; border-color: #ddd; }
+  #print-sheet .rec-line { break-inside: avoid; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  #print-sheet .rec-buy  { color: #047857; background: #ecfdf5; }
+  #print-sheet .rec-hold { color: #92400e; background: #fffbeb; }
+  #print-sheet .rec-sell { color: #b91c1c; background: #fef2f2; }
+  #print-sheet *, #print-sheet *::before { animation: none !important; transition: none !important; opacity: 1 !important; transform: none !important; }
+  @page { margin: 16mm; }
+}

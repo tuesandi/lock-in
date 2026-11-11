@@ -646,6 +646,7 @@ document.getElementById("analyze-btn").addEventListener("click", async () => {
         html += `<div class="analysis-total">Aktueller Portfoliowert: ${fmtNum(result.portfolio_value)} ${esc(result.currency || "")}${gain}</div>`;
       }
       html += renderAnalysis(result.analysis);
+      html += analysisFooter("Portfolio-Analyse", result.truncated);
       content.innerHTML = html;
     }
   } catch (err) {
@@ -675,7 +676,7 @@ document.getElementById("discover-btn").addEventListener("click", async () => {
     if (result.error) {
       content.innerHTML = `<div class="analysis-error">${esc(result.error)}</div>`;
     } else {
-      content.innerHTML = renderAnalysis(result.recommendations);
+      content.innerHTML = renderAnalysis(result.recommendations) + analysisFooter("Anlage-Ideen", result.truncated);
     }
   } catch (err) {
     content.innerHTML = `<div class="analysis-error">Netzwerkfehler: ${esc(err.message)}</div>`;
@@ -683,6 +684,49 @@ document.getElementById("discover-btn").addEventListener("click", async () => {
     btn.disabled = false;
     btn.textContent = "Neue Anlagen entdecken 🔍";
   }
+});
+
+// ── Analyse als PDF speichern ─────────────────────────────────────────────────
+// Öffnet den Druckdialog nur mit der Analyse (hell, gut lesbar). Dort "Als PDF
+// sichern" wählen – auf dem iPhone: Teilen → Drucken → mit zwei Fingern aufziehen.
+
+function analysisFooter(title, truncated) {
+  const warn = truncated
+    ? '<div class="analysis-error analysis-truncated">Die Antwort war länger als erlaubt und wurde abgeschnitten.</div>'
+    : "";
+  return `${warn}<div class="analysis-actions no-print">
+    <button class="btn-icon btn-print" data-title="${esc(title)}">📄 Als PDF speichern</button>
+  </div>`;
+}
+
+document.addEventListener("click", (e) => {
+  const btn = e.target.closest(".btn-print");
+  if (!btn) return;
+  const source = btn.closest(".analysis-box");
+  const title = btn.dataset.title || "Analyse";
+  const dateStr = new Date().toLocaleDateString("de-CH");
+
+  let sheet = document.getElementById("print-sheet");
+  if (!sheet) {
+    sheet = document.createElement("div");
+    sheet.id = "print-sheet";
+    document.body.appendChild(sheet);
+  }
+  sheet.innerHTML = `<h1 class="print-title">${esc(title)}</h1>
+    <div class="print-meta">Lock In · ${esc(dateStr)} · Keine Anlageberatung</div>
+    ${source.innerHTML}`;
+  sheet.querySelectorAll(".no-print").forEach((el) => el.remove());
+
+  const oldTitle = document.title;
+  document.title = `${title} ${new Date().toISOString().slice(0, 10)}`; // wird zum PDF-Dateinamen
+  document.body.classList.add("printing");
+  const done = () => {
+    document.body.classList.remove("printing");
+    document.title = oldTitle;
+    window.removeEventListener("afterprint", done);
+  };
+  window.addEventListener("afterprint", done);
+  window.print();
 });
 
 // ── Init ──────────────────────────────────────────────────────────────────────

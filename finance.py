@@ -77,6 +77,16 @@ def fetch_crypto_data(ticker: str) -> dict:
         return {"price": None, "change_pct": None, "currency": None}
 
 
+# Obergrenze für Claudes Antwort. Hoch genug für eine vollständige Analyse; bezahlt
+# wird nur, was Claude tatsächlich schreibt (typisch 2'000–4'000 Tokens).
+MAX_ANALYSIS_TOKENS = 16000
+
+
+def _response_text(msg):
+    """Alle Textblöcke der Antwort zusammen (nicht nur den ersten)."""
+    return "".join(b.text for b in msg.content if b.type == "text").strip()
+
+
 def _fmt(v, cur, d=2):
     if v is None:
         return "n/a"
@@ -188,10 +198,11 @@ Max. 3 Sätze: Warum die langfristige Strategie (Profil: {risk}, Ziel: {goals}) 
         client = anthropic.Anthropic(api_key=api_key)
         msg = client.messages.create(
             model="claude-sonnet-4-6",
-            max_tokens=1200,
+            # 1'200 Tokens reichten bei 7 Positionen nicht: der Text brach mitten im Satz ab
+            max_tokens=MAX_ANALYSIS_TOKENS,
             messages=[{"role": "user", "content": prompt}],
         )
-        analysis = msg.content[0].text.strip()
+        analysis = _response_text(msg)
     except Exception as e:
         err = str(e)
         if "credit balance" in err or "billing" in err.lower():
@@ -200,6 +211,7 @@ Max. 3 Sätze: Warum die langfristige Strategie (Profil: {risk}, Ziel: {goals}) 
 
     return jsonify({
         "analysis": analysis,
+        "truncated": msg.stop_reason == "max_tokens",
         "portfolio_value": total["value"],
         "currency": base,
         "total": total,
@@ -274,17 +286,17 @@ Wichtig: Prüfe Überschneidungen mit bestehenden ETFs, bevor du etwas empfiehls
         client = anthropic.Anthropic(api_key=api_key)
         msg = client.messages.create(
             model="claude-sonnet-4-6",
-            max_tokens=1000,
+            max_tokens=MAX_ANALYSIS_TOKENS,
             messages=[{"role": "user", "content": prompt}],
         )
-        recommendations = msg.content[0].text.strip()
+        recommendations = _response_text(msg)
     except Exception as e:
         err = str(e)
         if "credit balance" in err or "billing" in err.lower():
             return jsonify({"error": "Kein API-Guthaben."}), 402
         return jsonify({"error": "Claude-Fehler: " + err[:300]}), 502
 
-    return jsonify({"recommendations": recommendations})
+    return jsonify({"recommendations": recommendations, "truncated": msg.stop_reason == "max_tokens"})
 
 
 # ── Portfolio CRUD ─────────────────────────────────────────────────────────────
