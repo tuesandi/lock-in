@@ -101,6 +101,14 @@
     body.fractional = $("tr-fractional").checked;
     body.pelosi_push = $("tr-push").checked;
     const btn = $("tr-save-settings");
+    // Unlesbare Zahlen nicht stillschweigend verwerfen, sondern melden
+    const bad = [...$("tr-settings").querySelectorAll("input[data-num]")].filter((el) => !markNumField(el));
+    if (bad.length) {
+      btn.textContent = "Zahl prüfen (rot markiert)";
+      bad[0].focus();
+      setTimeout(() => { btn.textContent = "Speichern"; }, 3000);
+      return;
+    }
     const oldBase = cur();
     // Ein Knopf für Profil (app.js) und Regeln
     const [res, profile] = await Promise.all([
@@ -133,7 +141,7 @@
         <div class="tr-target" data-i="${i}">
           <input class="t-ticker" value="${attr(t.ticker)}" placeholder="Ticker" aria-label="Ticker">
           <input class="t-name" value="${attr(t.name || "")}" placeholder="Name (optional)" aria-label="Name">
-          <input class="t-weight" type="number" min="0" step="any" value="${attr(+Number(t.weight).toFixed(2))}" aria-label="Gewicht in Prozent">
+          <input class="t-weight" type="text" inputmode="decimal" data-num autocomplete="off" value="${attr(+Number(t.weight).toFixed(2))}" aria-label="Gewicht in Prozent">
           <span class="t-pct">%</span>
           <button class="del-btn" title="Entfernen">✕</button>
         </div>`)
@@ -142,7 +150,7 @@
         const i = +row.dataset.i;
         row.querySelector(".t-ticker").addEventListener("input", (e) => { targets[i].ticker = e.target.value.trim().toUpperCase(); });
         row.querySelector(".t-name").addEventListener("input", (e) => { targets[i].name = e.target.value; });
-        row.querySelector(".t-weight").addEventListener("input", (e) => { targets[i].weight = parseFloat(e.target.value) || 0; updateSum(); });
+        row.querySelector(".t-weight").addEventListener("input", (e) => { targets[i].weight = parseNum(e.target.value) || 0; updateSum(); });
         row.querySelector(".del-btn").addEventListener("click", () => { targets.splice(i, 1); renderTargets(source); });
       });
     }
@@ -282,7 +290,7 @@
   async function runBudget() {
     const btn = $("tr-budget-btn");
     const box = $("tr-budget-out");
-    const amount = parseFloat($("tr-amount").value);
+    const amount = parseNum($("tr-amount").value);
     if (!amount || amount <= 0) {
       showError(box, "Bitte einen Betrag eingeben.");
       return;

@@ -109,7 +109,7 @@ def clean_settings(data, current):
     for k in NUMBER_FIELDS:
         if k in data and data[k] not in (None, ""):
             try:
-                v = float(data[k])
+                v = float(str(data[k]).strip().replace("'", "").replace("’", "").replace(" ", "").replace(",", "."))
             except (TypeError, ValueError):
                 raise ValueError(f"{k} ist keine Zahl")
             if v < 0:

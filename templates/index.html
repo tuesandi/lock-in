@@ -109,15 +109,15 @@
               <option value="Aggressiv">Aggressiv</option>
             </select>
           </label>
-          <label>Budget pro Monat<input type="number" inputmode="decimal" enterkeyhint="done" id="pf-budget" min="0" step="50"></label>
+          <label>Budget pro Monat<input type="text" inputmode="decimal" data-num autocomplete="off" enterkeyhint="done" id="pf-budget"></label>
           <label class="tr-wide">Investitionsziele<input type="text" id="pf-goals" placeholder="z.B. Altersvorsorge, Vermögensaufbau"></label>
           <label>Basiswährung<input type="text" id="tr-base" maxlength="3" autocapitalize="characters" autocorrect="off" spellcheck="false"></label>
-          <label>Cash im Depot<input type="number" inputmode="decimal" enterkeyhint="done" id="tr-cash" min="0" step="any"></label>
-          <label>Cash-Puffer %<input type="number" inputmode="decimal" enterkeyhint="done" id="tr-buffer" min="0" max="99" step="any"></label>
-          <label>Max. pro Titel %<input type="number" inputmode="decimal" enterkeyhint="done" id="tr-cap" min="1" max="100" step="any"></label>
-          <label>Max. Order<input type="number" inputmode="decimal" enterkeyhint="done" id="tr-max-order" min="0" step="any"></label>
-          <label>Min. Order<input type="number" inputmode="decimal" enterkeyhint="done" id="tr-min-order" min="0" step="any"></label>
-          <label>Rebalancing-Band (Punkte)<input type="number" inputmode="decimal" enterkeyhint="done" id="tr-band" min="0" step="any"></label>
+          <label>Cash im Depot<input type="text" inputmode="decimal" data-num autocomplete="off" enterkeyhint="done" id="tr-cash"></label>
+          <label>Cash-Puffer %<input type="text" inputmode="decimal" data-num autocomplete="off" enterkeyhint="done" id="tr-buffer"></label>
+          <label>Max. pro Titel %<input type="text" inputmode="decimal" data-num autocomplete="off" enterkeyhint="done" id="tr-cap"></label>
+          <label>Max. Order<input type="text" inputmode="decimal" data-num autocomplete="off" enterkeyhint="done" id="tr-max-order"></label>
+          <label>Min. Order<input type="text" inputmode="decimal" data-num autocomplete="off" enterkeyhint="done" id="tr-min-order"></label>
+          <label>Rebalancing-Band (Punkte)<input type="text" inputmode="decimal" data-num autocomplete="off" enterkeyhint="done" id="tr-band"></label>
           <label>Max. Orders pro Tag<input type="number" inputmode="numeric" enterkeyhint="done" id="tr-max-day" min="0" step="1"></label>
           <label class="tr-wide">Gesperrte Ticker (Komma-getrennt)<input type="text" id="tr-blocked" autocapitalize="characters" autocorrect="off" spellcheck="false" placeholder="z.B. TSLA, GME"></label>
           <label class="tr-wide">Beobachtete Abgeordnete (Komma-getrennt)<input type="text" id="tr-members" placeholder="Nancy Pelosi"></label>
@@ -138,8 +138,8 @@
           <option value="ETF">ETF</option>
           <option value="Krypto">Krypto</option>
         </select>
-        <input class="pf-qty" type="number" inputmode="decimal" enterkeyhint="done" id="pf-quantity" placeholder="Menge" min="0.0001" step="any" required>
-        <input class="pf-price" type="number" inputmode="decimal" enterkeyhint="done" id="pf-buy-price" placeholder="Kaufpreis" min="0" step="any" required>
+        <input class="pf-qty" type="text" inputmode="decimal" data-num autocomplete="off" enterkeyhint="done" id="pf-quantity" placeholder="Menge" required>
+        <input class="pf-price" type="text" inputmode="decimal" data-num autocomplete="off" enterkeyhint="done" id="pf-buy-price" placeholder="Kaufpreis" required>
         <button type="submit" class="btn-add" id="pf-submit-btn">+</button>
       </form>
 
@@ -194,7 +194,7 @@
       <div class="tr-panel" id="tr-panel-budget">
         <p class="tr-intro">Verteilt einen neuen Betrag nach deinen Zielgewichten – mit Cash-Puffer, Obergrenze pro Titel und Mindestorder.</p>
         <div class="tr-row tr-controls">
-          <input type="number" inputmode="decimal" enterkeyhint="done" id="tr-amount" class="tr-input" placeholder="Betrag, z.B. 1000" min="1" step="any">
+          <input type="text" inputmode="decimal" data-num autocomplete="off" enterkeyhint="done" id="tr-amount" class="tr-input" placeholder="Betrag, z.B. 1000">
           <label class="tr-check"><input type="checkbox" id="tr-whole"> Nur ganze Stücke</label>
           <button class="btn-analyze btn-discover" id="tr-budget-btn">Verteilen</button>
         </div>

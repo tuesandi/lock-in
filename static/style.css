@@ -1232,3 +1232,6 @@ tr.mine td { background: var(--primary-dim); }
   #print-sheet *, #print-sheet *::before { animation: none !important; transition: none !important; opacity: 1 !important; transform: none !important; }
   @page { margin: 16mm; }
 }
+
+/* Unlesbare Zahl in einem Eingabefeld */
+input.invalid { border-color: var(--danger) !important; box-shadow: 0 0 0 1px var(--danger); }

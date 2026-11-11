@@ -395,6 +395,23 @@ let editingPortfolioId = null;
 let live = null;          // Antwort von /api/trader/positions (Kurse + Werte in Basiswährung)
 let liveRequest = 0;
 
+// Zahlen wie Schweizer sie tippen: "1'234,50", "2,5", "1 000.5" -> Number (NaN wenn unlesbar)
+function parseNum(text) {
+  const t = String(text ?? "").trim().replace(/['’\s]/g, "").replace(",", ".");
+  if (!t) return NaN;
+  return /^-?\d*\.?\d+$/.test(t) ? Number(t) : NaN;
+}
+
+// Unlesbare Zahl im Feld rot markieren, damit nichts stillschweigend verloren geht
+function markNumField(el) {
+  const bad = el.value.trim() !== "" && isNaN(parseNum(el.value));
+  el.classList.toggle("invalid", bad);
+  return !bad;
+}
+document.addEventListener("input", (e) => {
+  if (e.target.matches && e.target.matches("input[data-num]")) markNumField(e.target);
+});
+
 const fmtNum = (v, d = 2) =>
   Number(v).toLocaleString("de-CH", { minimumFractionDigits: d, maximumFractionDigits: d });
 
@@ -495,9 +512,14 @@ document.getElementById("portfolio-form").addEventListener("submit", async (e) =
   const assetName = document.getElementById("pf-name").value.trim();
   const ticker = document.getElementById("pf-ticker").value.trim();
   const assetType = document.getElementById("pf-type").value;
-  const quantity = parseFloat(document.getElementById("pf-quantity").value);
-  const buyPrice = parseFloat(document.getElementById("pf-buy-price").value);
-  if (!assetName || !quantity || isNaN(buyPrice)) return;
+  const quantity = parseNum(document.getElementById("pf-quantity").value);
+  const buyPrice = parseNum(document.getElementById("pf-buy-price").value);
+  if (!assetName) return;
+  const qtyOk = markNumField(document.getElementById("pf-quantity")) && quantity > 0;
+  const priceOk = markNumField(document.getElementById("pf-buy-price")) && !isNaN(buyPrice);
+  document.getElementById("pf-quantity").classList.toggle("invalid", !qtyOk);
+  document.getElementById("pf-buy-price").classList.toggle("invalid", !priceOk);
+  if (!qtyOk || !priceOk) return;
 
   const body = JSON.stringify({ asset_name: assetName, ticker, asset_type: assetType, quantity, buy_price: buyPrice });
 
@@ -566,7 +588,7 @@ document.getElementById("tr-amount").addEventListener("input", (e) => { delete e
 async function saveProfile() {
   const risk = document.getElementById("pf-risk").value || null;
   const goals = document.getElementById("pf-goals").value.trim() || null;
-  const budget = parseFloat(document.getElementById("pf-budget").value) || null;
+  const budget = parseNum(document.getElementById("pf-budget").value) || null;
   const res = await api("/api/financial-profile", {
     method: "PUT",
     body: JSON.stringify({ risk_tolerance: risk, investment_goals: goals, monthly_budget: budget }),
