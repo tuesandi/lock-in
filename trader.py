@@ -700,11 +700,27 @@ def build_plan(cfg, data=None):
 
     core_now = sum(i["value"] for i in items if i["bucket"] == "core")
     buys = gap_fill(values, targets, plan_money) if (plan_money > 0 and targets) else {}
+    extra = num_opt("extra_amount") or 0.0   # einmaliger Betrag (z.B. Bonus), nur Vorschau
+    extra_buys = gap_fill(values, targets, extra) if (extra > 0 and targets) else {}
     for i in items:
         i["buy"] = round(buys.get(i["ticker"], 0.0), 2)
+        i["extra_buy"] = round(extra_buys.get(i["ticker"], 0.0), 2)
+
+    # Obergrenze pro Satellit-Titel: nur als Warnung (Kern-ETFs dürfen grösser sein)
+    cap = float(cfg.get("max_position_pct") or 100)
+    for i in items:
+        if i["bucket"] != "satellite":
+            continue
+        if i["target_pct"] > cap + 0.05:
+            notes.append(f"{i['ticker']}: Ziel {i['target_pct']:.1f} % liegt über deiner Grenze von {cap:g} % "
+                         f"pro Satellit-Titel.")
+        elif i["current_pct"] > cap + 0.05:
+            notes.append(f"{i['ticker']} ist heute {i['current_pct']:.1f} % deines Depots – über deiner Grenze von "
+                         f"{cap:g} % pro Satellit-Titel. Der Plan baut das mit neuem Geld ab.")
     return {
         "currency": pos["currency"], "total": round(total, 2), "monthly": monthly,
         "satellite_monthly": free_sat, "plan_money": round(plan_money, 2), "take_profit_pct": take_profit,
+        "extra_amount": extra,
         "core_share": core_share, "core_now_pct": round(100 * core_now / total, 1) if total else 0,
         "months": plan_months(values, targets, plan_money, free_sat, satellites) if targets else None,
         "take_profit": take_profit_hints(pos, satellites, take_profit,
@@ -991,21 +1007,6 @@ def copycat(cik):
         "changes": [c for c in rep["changes"] if c["status"] != "UNCHANGED"][:30],
         "weights": weights, "skipped": skipped[:20], "caveats": E.CAVEATS,
     })
-
-
-@trader_bp.route("/api/trader/copycat/<cik>/apply", methods=["POST"])
-def copycat_apply(cik):
-    data = request.json or {}
-    try:
-        top = int(data.get("top", 10))
-        rep = cached(("13f", E.cik10(cik)), 6 * 3600, lambda: copycat_report(cik))
-        weights, _ = E.copy_weights(rep["positions"], top=top, exclude=_split_list(data.get("exclude"), True))
-    except (E.EdgarError, ValueError) as e:
-        return err(str(e), 502 if isinstance(e, E.EdgarError) else 400)
-    rows = [{"ticker": w["ticker"], "name": w["name"], "weight": w["weight"]} for w in weights]
-    m = rep["meta"]
-    save_targets(rows, f"13F {m['filer']} ({m['period']}, Top {top})")
-    return get_targets()
 
 
 # ── Kongress-Trades (House PTRs) ──────────────────────────────────────────────

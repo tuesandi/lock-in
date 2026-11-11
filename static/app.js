@@ -569,20 +569,9 @@ async function loadProfile() {
     if (p.investment_goals) document.getElementById("pf-goals").value = p.investment_goals;
     if (p.monthly_budget) {
       document.getElementById("pf-budget").value = p.monthly_budget;
-      prefillBudgetAmount(p.monthly_budget);
     }
   } catch {}
 }
-
-// "Neues Geld" mit dem Monatsbudget vorbelegen, solange dort nichts eingetippt wurde
-function prefillBudgetAmount(budget) {
-  const amount = document.getElementById("tr-amount");
-  if (amount && budget && (!amount.value || amount.dataset.prefilled)) {
-    amount.value = budget;
-    amount.dataset.prefilled = "1";
-  }
-}
-document.getElementById("tr-amount").addEventListener("input", (e) => { delete e.target.dataset.prefilled; });
 
 // Wird vom gemeinsamen "Speichern"-Knopf unter "Profil & Regeln" aufgerufen (trader.js)
 async function saveProfile() {
@@ -593,7 +582,6 @@ async function saveProfile() {
     method: "PUT",
     body: JSON.stringify({ risk_tolerance: risk, investment_goals: goals, monthly_budget: budget }),
   });
-  if (res && !res.error) prefillBudgetAmount(budget);
   return res;
 }
 

@@ -113,7 +113,7 @@ def _headlines(rows, per_ticker=3):
 
 @finance_bp.route("/api/finance/analyze", methods=["POST"])
 def analyze_portfolio():
-    from trader import load_settings, load_targets, positions_data
+    from trader import build_plan, load_settings, positions_data
 
     api_key = os.environ.get("ANTHROPIC_API_KEY", "").strip()
     if not api_key:
@@ -133,8 +133,11 @@ def analyze_portfolio():
         return jsonify({"error": "Portfolio ist leer – bitte zuerst Positionen hinzufügen."}), 400
     base = data["currency"]
     total = data["total"]
-    targets = {t["ticker"]: t["weight"] for t in load_targets()}
     news = _headlines(data["positions"])
+    # Kern-Satellit-Ziel aus "Mein Ziel" (Topf und Zielanteil je Titel)
+    plan = build_plan(cfg)
+    plan_by_t = {i["ticker"]: i for i in plan["items"]}
+    has_goal = plan["saved"]
 
     # Positionsblöcke für den Prompt: Werte in Basiswährung, Kurse in Originalwährung
     blocks = []
@@ -150,8 +153,10 @@ def analyze_portfolio():
             lines.append(f"  Aktueller Kurs: {p['price']} {cur_}" + (f" ({chg:+.2f}% heute)" if chg is not None else ""))
             lines.append("  Gewinn/Verlust seit Kauf: "
                          + (f"{p['gain_pct']:+.2f}% ({_fmt(p['gain'], base)})" if p.get("gain_pct") is not None else "n/a"))
-            lines.append(f"  Positionswert: {_fmt(p['value'], base)} = {p['weight']:.1f}% des Portfolios"
-                         + (f" (Ziel: {targets[t]:.1f}%)" if t in targets else ""))
+            lines.append(f"  Positionswert: {_fmt(p['value'], base)} = {p['weight']:.1f}% des Portfolios")
+        if has_goal and t in plan_by_t:
+            it = plan_by_t[t]
+            lines.append(f"  Topf: {'KERN' if it['bucket'] == 'core' else 'SATELLIT'} – Ziel {it['target_pct']:.1f}% des Portfolios")
         if news.get(t):
             lines.append("  Neueste Schlagzeilen:\n  " + "\n  ".join(news[t]))
         blocks.append("\n".join(lines))
@@ -161,38 +166,63 @@ def analyze_portfolio():
     goals = profile.get("investment_goals") or "nicht angegeben"
     budget = profile.get("monthly_budget")
     budget_str = f"{_fmt(budget, base, 0)}/Monat" if budget else "nicht angegeben"
-    target_note = ("Zielgewichte sind hinterlegt (in Klammern). Beziehe die Abweichung davon ein."
-                   if targets else "Es sind keine Zielgewichte hinterlegt.")
     cash = cfg.get("cash") or 0
+    sat_free = plan.get("satellite_monthly") or 0
+    tp = plan.get("take_profit_pct")
+    if has_goal:
+        strategy = (f"## Strategie des Investors (Kern-Satellit, selbst festgelegt)\n"
+                    f"- Ziel: {plan['core_share']:g}% Kern (breite ETFs, langfristig liegen lassen) / "
+                    f"{100 - plan['core_share']:g}% Satellit (Einzelaktien und Themen, aktiv)\n"
+                    f"- Kern heute: {plan['core_now_pct']:.0f}%. Umbau nur mit neuem Geld, ohne Verkäufe im Kern.\n"
+                    f"- Vom Monatsbudget sind {_fmt(sat_free, base, 0)} frei für Satellit-Titel nach eigener Wahl.\n"
+                    + (f"- Eigene Regel: Gewinne im Satelliten ab +{tp:g}% mitnehmen und in den Kern stecken.\n" if tp else ""))
+        tasks = f"""### 1. Struktur-Check
+Passt die Kern-Satellit-Aufteilung ({plan['core_share']:g}/{100 - plan['core_share']:g}) und die Aufteilung innerhalb des Kerns zum Profil? Klumpenrisiken, Region und Währung, Überschneidungen zwischen ETFs und Einzelaktien. Schlage keine andere Strategie vor, nur konkrete Hinweise, falls etwas nicht zum Profil passt.
 
-    prompt = f"""Du bist ein hochdisziplinierter, risikobewusster Finanzanalyst. Dein Arbeitsprinzip: Schrittweises Denken (Chain of Thought) vor jeder Empfehlung – dann präzise, konkrete Handlungsanweisungen.
+### 2. Satellit-Titel
+Nur für Titel im SATELLIT:
+**[TICKER] → HALTEN / KAUFEN/AUFSTOCKEN / VERKAUFEN**
+Denke: (1-2 Sätze: Was sagen Kursverlauf, Gewicht und News zusammen?)
+Aktion: (konkret, mit Betrag in {base}. Käufe nur aus dem freien Satellit-Budget von {_fmt(sat_free, base, 0)} pro Monat; Verkäufe als Gewinnmitnahme mit Erlös in den Kern.)
 
-## Investorenprofil
-- Risikotoleranz: {risk}
-- Investitionsziele: {goals}
-- Monatliches Budget: {budget_str}
+### 3. Kern
+Keine Kauf-/Verkaufsaufträge für Kern-Titel – sie werden automatisch mit neuem Geld aufgebaut und bleiben liegen. Höchstens 2 Sätze, ob die Kern-Titel ihre Aufgabe (breite Streuung) erfüllen.
 
-## Portfolio
-Aktueller Wert: {_fmt(total['value'], base)} (Einstand {_fmt(total['cost'], base)}, {total['gain_pct'] if total['gain_pct'] is not None else 0:+.2f}%), Cash im Depot: {_fmt(cash, base)}.
-Alle Werte in {base} umgerechnet; Kurse in der Handelswährung des Titels. {target_note}
-
-{positions_text}
-
----
-
-Analysiere das Portfolio auf Deutsch in genau diesen drei Abschnitten:
-
-### 1. Portfolio-Gesamtlage
+### 4. Impuls-Check
+Max. 3 Sätze: Warum die langfristige Strategie (Profil: {risk}, Ziel: {goals}) Vorrang vor kurzfristigen Marktreaktionen hat."""
+    else:
+        strategy = "## Strategie\nDer Investor hat in der App noch kein Kern-Satellit-Ziel gespeichert.\n"
+        tasks = f"""### 1. Portfolio-Gesamtlage
 Gesamtwert, Diversifikation nach Anlageklasse, Region und Währung, konkrete Klumpenrisiken (welche Position dominiert zu stark und warum ist das problematisch? Achte auf Überschneidungen zwischen ETFs und Einzelaktien).
 
 ### 2. Positions-Analyse
 Für jede Position:
 **[TICKER] → HALTEN / KAUFEN/AUFSTOCKEN / VERKAUFEN**
 Denke: (1-2 Sätze Chain of Thought: Was sagen Kursverlauf, Gewicht und News zusammen?)
-Aktion: (Konkrete Handlungsanweisung mit Stückzahl und Betrag in {base} – z.B. „Verkaufe 2 von 5 Anteilen (40 %), ca. 340 {base}." oder „Halten, kein Handlungsbedarf.")
+Aktion: (Konkrete Handlungsanweisung mit Betrag in {base} oder „Halten, kein Handlungsbedarf.")
 
 ### 3. Impuls-Check
-Max. 3 Sätze: Warum die langfristige Strategie (Profil: {risk}, Ziel: {goals}) Vorrang vor kurzfristigen Marktreaktionen hat."""
+Max. 3 Sätze: Warum die langfristige Strategie (Profil: {risk}, Ziel: {goals}) Vorrang vor kurzfristigen Marktreaktionen hat. Empfiehl, im Tab „Mein Ziel" eine Struktur festzulegen."""
+
+    prompt = f"""Du bist ein hochdisziplinierter, risikobewusster Finanzanalyst. Dein Arbeitsprinzip: Schrittweises Denken vor jeder Empfehlung – dann präzise, konkrete Handlungsanweisungen. Respektiere die Strategie, die der Investor selbst festgelegt hat.
+
+## Investorenprofil
+- Risikotoleranz: {risk}
+- Investitionsziele: {goals}
+- Monatliches Budget: {budget_str}
+
+{strategy}
+## Portfolio
+Aktueller Wert: {_fmt(total['value'], base)} (Einstand {_fmt(total['cost'], base)}, {total['gain_pct'] if total['gain_pct'] is not None else 0:+.2f}%), Cash im Depot: {_fmt(cash, base)}.
+Alle Werte in {base} umgerechnet; Kurse in der Handelswährung des Titels.
+
+{positions_text}
+
+---
+
+Analysiere das Portfolio auf Deutsch in genau diesen Abschnitten:
+
+{tasks}"""
 
     try:
         client = anthropic.Anthropic(api_key=api_key)

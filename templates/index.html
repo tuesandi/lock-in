@@ -113,15 +113,8 @@
           <label class="tr-wide">Investitionsziele<input type="text" id="pf-goals" placeholder="z.B. Altersvorsorge, Vermögensaufbau"></label>
           <label>Basiswährung<input type="text" id="tr-base" maxlength="3" autocapitalize="characters" autocorrect="off" spellcheck="false"></label>
           <label>Cash im Depot<input type="text" inputmode="decimal" data-num autocomplete="off" enterkeyhint="done" id="tr-cash"></label>
-          <label>Cash-Puffer %<input type="text" inputmode="decimal" data-num autocomplete="off" enterkeyhint="done" id="tr-buffer"></label>
-          <label>Max. pro Titel %<input type="text" inputmode="decimal" data-num autocomplete="off" enterkeyhint="done" id="tr-cap"></label>
-          <label>Max. Order<input type="text" inputmode="decimal" data-num autocomplete="off" enterkeyhint="done" id="tr-max-order"></label>
-          <label>Min. Order<input type="text" inputmode="decimal" data-num autocomplete="off" enterkeyhint="done" id="tr-min-order"></label>
-          <label>Rebalancing-Band (Punkte)<input type="text" inputmode="decimal" data-num autocomplete="off" enterkeyhint="done" id="tr-band"></label>
-          <label>Max. Orders pro Tag<input type="number" inputmode="numeric" enterkeyhint="done" id="tr-max-day" min="0" step="1"></label>
-          <label class="tr-wide">Gesperrte Ticker (Komma-getrennt)<input type="text" id="tr-blocked" autocapitalize="characters" autocorrect="off" spellcheck="false" placeholder="z.B. TSLA, GME"></label>
+          <label title="Gilt für Einzelaktien und Themen-ETFs im Satelliten. Darüber zeigt „Mein Ziel" eine Warnung.">Max. pro Satellit-Titel %<input type="text" inputmode="decimal" data-num autocomplete="off" enterkeyhint="done" id="tr-cap"></label>
           <label class="tr-wide">Beobachtete Abgeordnete (Komma-getrennt)<input type="text" id="tr-members" placeholder="Nancy Pelosi"></label>
-          <label class="tr-check"><input type="checkbox" id="tr-fractional"> Bruchteile von Aktien erlaubt</label>
           <label class="tr-check"><input type="checkbox" id="tr-push"> Push bei neuen Kongress-Trades</label>
         </div>
         <div class="tr-row">
@@ -150,11 +143,8 @@
       <div class="tr-tabs" role="tablist">
         <button class="tr-tab active" data-panel="goal" role="tab">Mein Ziel</button>
         <button class="tr-tab" data-panel="ai" role="tab">KI-Analyse</button>
-        <button class="tr-tab" data-panel="rebalance" role="tab">Ziel &amp; Rebalancing</button>
-        <button class="tr-tab" data-panel="budget" role="tab">Neues Geld</button>
         <button class="tr-tab" data-panel="news" role="tab">News</button>
-        <button class="tr-tab" data-panel="copycat" role="tab">Copycat 13F</button>
-        <button class="tr-tab" data-panel="pelosi" role="tab">Kongress</button>
+        <button class="tr-tab" data-panel="ideas" role="tab">Ideen</button>
       </div>
 
       <!-- Mein Ziel: Kern-Satellit mit Übergangsplan -->
@@ -176,6 +166,11 @@
           </label>
           <label class="goal-core-label" title="Liegt ein Satellit-Titel so viel über deinem Kaufpreis, zeigt die App eine mögliche Gewinnmitnahme an.">Gewinnmitnahme ab +
             <input type="text" inputmode="decimal" data-num autocomplete="off" enterkeyhint="done" id="goal-take-profit" class="tr-input" placeholder="aus"> %
+          </label>
+        </div>
+        <div class="tr-row goal-controls">
+          <label class="goal-core-label" title="Zum Beispiel ein Bonus oder Geburtstagsgeld: zeigt, wie du ihn passend zu deinem Ziel verteilst.">Extra-Betrag einmalig
+            <input type="text" inputmode="decimal" data-num autocomplete="off" enterkeyhint="done" id="goal-extra" class="tr-input" placeholder="z.B. 1000">
           </label>
         </div>
         <div class="analysis-box" id="goal-out"><div class="analysis-loading">Lade Kurse für deinen Plan…</div></div>
@@ -201,37 +196,6 @@
         </div>
       </div>
 
-      <!-- Ziel & Rebalancing -->
-      <div class="tr-panel" id="tr-panel-rebalance">
-        <p class="tr-intro">Rechnet aus, was du <em>kaufen und verkaufen</em> müsstest, um sofort beim Ziel zu sein. Willst du nur mit neuem Geld umbauen, ohne zu verkaufen, nutze „Mein Ziel".</p>
-        <div class="tr-subhead">
-          <span>Zielgewichte <span class="tr-hint" id="tr-target-source"></span></span>
-          <button class="tr-link" id="tr-from-portfolio">Aktuelles Portfolio übernehmen</button>
-        </div>
-        <div class="tr-targets" id="tr-targets"></div>
-        <div class="tr-row">
-          <button class="tr-link" id="tr-add-target">+ Titel hinzufügen</button>
-          <span class="tr-hint" id="tr-target-sum"></span>
-          <button class="btn-icon" id="tr-save-targets">Ziel speichern</button>
-        </div>
-        <div class="tr-row tr-controls">
-          <label class="tr-check"><input type="checkbox" id="tr-sell-untracked"> Positionen ausserhalb des Ziels verkaufen</label>
-          <button class="btn-analyze" id="tr-rebalance-btn">Rebalancing berechnen</button>
-        </div>
-        <div class="analysis-box" id="tr-rebalance-out" hidden></div>
-      </div>
-
-      <!-- Neues Geld -->
-      <div class="tr-panel" id="tr-panel-budget">
-        <p class="tr-intro">Verteilt einen neuen Betrag nach deinen Zielgewichten – mit Cash-Puffer, Obergrenze pro Titel und Mindestorder.</p>
-        <div class="tr-row tr-controls">
-          <input type="text" inputmode="decimal" data-num autocomplete="off" enterkeyhint="done" id="tr-amount" class="tr-input" placeholder="Betrag, z.B. 1000">
-          <label class="tr-check"><input type="checkbox" id="tr-whole"> Nur ganze Stücke</label>
-          <button class="btn-analyze btn-discover" id="tr-budget-btn">Verteilen</button>
-        </div>
-        <div class="analysis-box" id="tr-budget-out" hidden></div>
-      </div>
-
       <!-- News -->
       <div class="tr-panel" id="tr-panel-news">
         <div class="tr-row tr-controls">
@@ -245,18 +209,18 @@
         <div class="analysis-box" id="tr-news-out" hidden></div>
       </div>
 
-      <!-- Copycat -->
-      <div class="tr-panel" id="tr-panel-copycat">
+      <!-- Ideen: Anregungen für den Satelliten -->
+      <div class="tr-panel" id="tr-panel-ideas">
+        <p class="tr-intro"><strong>Ideen für deinen Satelliten.</strong> Nichts hier ändert dein Ziel – was dich überzeugt, kaufst du mit dem freien Satellit-Budget.</p>
+        <div class="tr-section-title">Copycat: Portfolios bekannter Investoren</div>
         <p class="tr-intro">Baut das Portfolio eines Investors aus seiner letzten 13F-Meldung bei der SEC nach – nur US-Aktien, bis zu 45 Tage verzögert.</p>
         <div class="tr-row tr-controls">
           <input type="search" enterkeyhint="search" autocorrect="off" id="tr-filer-q" class="tr-input" placeholder="Suchen: Buffett, Burry, Ackman, Bridgewater…" autocomplete="off">
         </div>
         <ul class="tr-filers" id="tr-filers"></ul>
         <div class="analysis-box" id="tr-copycat-out" hidden></div>
-      </div>
 
-      <!-- Kongress -->
-      <div class="tr-panel" id="tr-panel-pelosi">
+        <div class="tr-section-title ideas-gap">Kongress: Trades von US-Abgeordneten</div>
         <p class="tr-intro">Aktiengeschäfte von Mitgliedern des US-Repräsentantenhauses (STOCK-Act-Meldungen). Gemeldet bis zu 45 Tage nach dem Trade, Beträge nur als Spannen.</p>
         <div class="tr-row tr-controls">
           <input type="text" id="tr-pelosi-members" class="tr-input" placeholder="Leer = alle Abgeordneten">

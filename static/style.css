@@ -1271,3 +1271,6 @@ input.invalid { border-color: var(--danger) !important; box-shadow: 0 0 0 1px va
 }
 .goal-free { margin-top: .6rem; font-weight: 600; }
 .goal-tp-none { margin: .2rem 0 .4rem; }
+.goal-extra-list { list-style: none; display: flex; flex-wrap: wrap; gap: .35rem .9rem; font-size: .84rem; margin-bottom: .4rem; }
+.goal-extra-list strong { color: var(--text); margin-right: .25rem; }
+.ideas-gap { margin-top: 1.6rem; }
