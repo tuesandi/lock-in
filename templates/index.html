@@ -148,7 +148,8 @@
       </ul>
 
       <div class="tr-tabs" role="tablist">
-        <button class="tr-tab active" data-panel="ai" role="tab">KI-Analyse</button>
+        <button class="tr-tab active" data-panel="goal" role="tab">Mein Ziel</button>
+        <button class="tr-tab" data-panel="ai" role="tab">KI-Analyse</button>
         <button class="tr-tab" data-panel="rebalance" role="tab">Ziel &amp; Rebalancing</button>
         <button class="tr-tab" data-panel="budget" role="tab">Neues Geld</button>
         <button class="tr-tab" data-panel="news" role="tab">News</button>
@@ -156,8 +157,29 @@
         <button class="tr-tab" data-panel="pelosi" role="tab">Kongress</button>
       </div>
 
+      <!-- Mein Ziel: Kern-Satellit mit Übergangsplan -->
+      <div class="tr-panel active" id="tr-panel-goal">
+        <p class="tr-intro">
+          <strong>Kern</strong> = breit gestreute ETFs, die du lange liegen lässt.
+          <strong>Satellit</strong> = Einzelaktien und Themen, mit denen du aktiv sein darfst.
+          Neues Geld fliesst zuerst dorthin, wo zu deinem Ziel noch etwas fehlt – du musst nichts verkaufen.
+        </p>
+        <div class="tr-row tr-controls goal-controls">
+          <label class="goal-core-label">Kern-Anteil
+            <input type="text" inputmode="decimal" data-num autocomplete="off" enterkeyhint="done" id="goal-core" class="tr-input"> %
+          </label>
+          <span class="tr-hint" id="goal-sat-label"></span>
+        </div>
+        <div class="analysis-box" id="goal-out"><div class="analysis-loading">Lade Kurse für deinen Plan…</div></div>
+        <div class="tr-row">
+          <span class="tr-hint" id="goal-status"></span>
+          <button class="btn-analyze btn-discover" id="goal-save">Ziel speichern</button>
+        </div>
+        <p class="tr-hint goal-house">🏠 Ca. 2–3 Jahre vor dem Hauskauf: das Geld fürs Eigenkapital schrittweise in sichere Anlagen umschichten.</p>
+      </div>
+
       <!-- KI-Analyse -->
-      <div class="tr-panel active" id="tr-panel-ai">
+      <div class="tr-panel" id="tr-panel-ai">
         <p class="tr-intro">Claude beurteilt dein Portfolio mit den aktuellen Werten in deiner Basiswährung, deinen Zielgewichten und den neuesten Schlagzeilen.</p>
         <div class="analyze-btn-row">
           <button class="btn-analyze" id="analyze-btn">Portfolio analysieren 🧠</button>
@@ -173,6 +195,7 @@
 
       <!-- Ziel & Rebalancing -->
       <div class="tr-panel" id="tr-panel-rebalance">
+        <p class="tr-intro">Rechnet aus, was du <em>kaufen und verkaufen</em> müsstest, um sofort beim Ziel zu sein. Willst du nur mit neuem Geld umbauen, ohne zu verkaufen, nutze „Mein Ziel".</p>
         <div class="tr-subhead">
           <span>Zielgewichte <span class="tr-hint" id="tr-target-source"></span></span>
           <button class="tr-link" id="tr-from-portfolio">Aktuelles Portfolio übernehmen</button>

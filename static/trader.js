@@ -529,8 +529,118 @@
         .join("")}</tbody></table></div>`;
   }
 
+  // ── Mein Ziel: Kern-Satellit mit Übergangsplan ──────────────────────────────
+
+  let goal = null;          // letzte Antwort von /api/trader/plan
+  let goalDirty = false;    // geändert, aber noch nicht gespeichert
+
+  function goalState() {
+    const buckets = {}, shares = {};
+    (goal ? goal.items : []).forEach((i) => { buckets[i.ticker] = i.bucket; shares[i.ticker] = i.share; });
+    $("goal-out").querySelectorAll("input.goal-share").forEach((el) => {
+      const v = parseNum(el.value);
+      if (!isNaN(v)) shares[el.dataset.t] = v;
+    });
+    const core = parseNum($("goal-core").value);
+    return { core_share: isNaN(core) ? (goal ? goal.core_share : 70) : core, buckets, shares };
+  }
+
+  async function loadGoal(preview) {
+    const box = $("goal-out");
+    const opts = preview ? { method: "POST", body: JSON.stringify(preview) } : {};
+    const r = await call("/api/trader/plan", opts);
+    if (!r) {
+      box.innerHTML = '<div class="analysis-error">Der Plan konnte nicht geladen werden.</div>';
+      return;
+    }
+    goal = r;
+    renderGoal();
+  }
+
+  function renderGoal() {
+    const g = goal;
+    if (document.activeElement !== $("goal-core")) $("goal-core").value = num(g.core_share, 0);
+    $("goal-sat-label").textContent = `Satellit: ${num(100 - g.core_share, 0)} %`;
+    if (!g.items.length) {
+      $("goal-out").innerHTML = '<div class="analysis-para">Noch keine Positionen mit Kurs. Trag oben zuerst deine Positionen ein.</div>';
+      return;
+    }
+    const months = g.months == null
+      ? (g.monthly ? "über 20 Jahre" : "–")
+      : g.months === 0 ? "erreicht ✓" : `ca. ${g.months} Monat${g.months === 1 ? "" : "e"}`;
+    const group = (bucket, title, pot) => {
+      const items = g.items.filter((i) => i.bucket === bucket);
+      const rows = items.map((i) => `<tr>
+          <td><strong>${esc(i.ticker)}</strong><span class="tr-sub">${esc(i.name || "")}</span></td>
+          <td class="num">${pct(i.current_pct)}</td>
+          <td class="num"><input class="goal-share" data-t="${attr(i.ticker)}" type="text" inputmode="decimal" data-num
+                value="${attr(num(i.share, 1).replace(/'/g, ""))}" aria-label="Anteil von ${attr(i.ticker)} im ${title}"> %</td>
+          <td class="num"><strong>${pct(i.target_pct)}</strong></td>
+          <td class="num">${i.buy > 0.5 ? `<span class="pos">${num(i.buy)}<span class="goal-cur"> ${esc(cur())}</span></span>` : "–"}</td>
+          <td><button class="tr-link goal-move" data-t="${attr(i.ticker)}" title="In den ${bucket === "core" ? "Satellit" : "Kern"} verschieben"
+                aria-label="${attr(i.ticker)} in den ${bucket === "core" ? "Satellit" : "Kern"} verschieben"><span class="move-long">→ ${bucket === "core" ? "Satellit" : "Kern"}</span><span class="move-short">⇄</span></button></td>
+        </tr>`).join("");
+      return `<div class="tr-section-title">${title} · Ziel ${num(pot, 0)} %</div>
+        ${items.length ? `<div class="tr-table-wrap"><table class="tr-table goal-table">
+          <thead><tr><th>Titel</th><th class="num">Heute</th><th class="num"><span class="move-long">Anteil im ${title}</span><span class="move-short">Anteil</span></th><th class="num"><span class="move-long">Ziel gesamt</span><span class="move-short">Ziel</span></th><th class="num"><span class="move-long">Diesen Monat</span><span class="move-short">Kauf</span></th><th></th></tr></thead>
+          <tbody>${rows}</tbody></table></div>`
+          : `<div class="analysis-para">Noch kein Titel im ${title}.</div>`}`;
+    };
+    $("goal-out").innerHTML = `
+      <div class="tr-summary">
+        <div class="tr-stat"><b>${num(g.core_now_pct, 0)} % → ${num(g.core_share, 0)} %</b><span>Kern heute → Ziel</span></div>
+        <div class="tr-stat"><b>${g.monthly ? money(g.monthly) : "–"}</b><span>pro Monat</span></div>
+        <div class="tr-stat"><b>${months}</b><span>bis zum Ziel</span></div>
+      </div>
+      ${g.monthly ? "" : '<div class="analysis-error">Trag unter „Profil &amp; Regeln" dein Budget pro Monat ein, dann rechnet der Plan aus, was du wann kaufst.</div>'}
+      ${group("core", "Kern", g.core_share)}
+      ${group("satellite", "Satellit", 100 - g.core_share)}
+      ${notesList((g.notes || []).concat([
+        "„Anteil im Kern/Satellit\" teilt den Topf unter seinen Titeln auf; vorbelegt mit dem heutigen Verhältnis.",
+        "„Diesen Monat\" verteilt dein Monatsbudget nur auf Titel unter ihrem Ziel – ohne Verkäufe. Gerechnet ohne Kursschwankungen.",
+      ]))}`;
+    $("goal-status").textContent = goalDirty ? "Noch nicht gespeichert" : (g.saved ? "Gespeichert" : "Vorschlag – noch nicht gespeichert");
+    $("goal-status").classList.toggle("warn", goalDirty || !g.saved);
+
+    $("goal-out").querySelectorAll("input.goal-share").forEach((el) =>
+      el.addEventListener("change", () => { if (markNumField(el)) { goalDirty = true; loadGoal(goalState()); } }));
+    $("goal-out").querySelectorAll(".goal-move").forEach((b) =>
+      b.addEventListener("click", () => {
+        const s = goalState();
+        s.buckets[b.dataset.t] = s.buckets[b.dataset.t] === "core" ? "satellite" : "core";
+        delete s.shares[b.dataset.t];   // im neuen Topf mit heutigem Verhältnis starten
+        goalDirty = true;
+        loadGoal(s);
+      }));
+  }
+
+  $("goal-core").addEventListener("change", (e) => {
+    if (!markNumField(e.target)) return;
+    const v = parseNum(e.target.value);
+    if (v < 0 || v > 100) { e.target.classList.add("invalid"); return; }
+    goalDirty = true;
+    loadGoal(goalState());
+  });
+
+  $("goal-save").addEventListener("click", async () => {
+    const btn = $("goal-save");
+    btn.disabled = true;
+    const r = await call("/api/trader/plan", { method: "PUT", body: JSON.stringify(goalState()) });
+    btn.disabled = false;
+    if (!r) {
+      $("goal-status").textContent = "Speichern fehlgeschlagen";
+      return;
+    }
+    goal = r;
+    goalDirty = false;
+    renderGoal();
+    $("goal-status").textContent = "Gespeichert – Rebalancing und Neues Geld rechnen jetzt mit diesem Ziel";
+    loadTargets();
+  });
+
   // ── Init ────────────────────────────────────────────────────────────────────
 
   loadSettings();
   loadTargets();
+  loadGoal();
 })();

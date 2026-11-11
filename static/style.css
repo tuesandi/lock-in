@@ -1235,3 +1235,37 @@ tr.mine td { background: var(--primary-dim); }
 
 /* Unlesbare Zahl in einem Eingabefeld */
 input.invalid { border-color: var(--danger) !important; box-shadow: 0 0 0 1px var(--danger); }
+
+/* Mein Ziel (Kern-Satellit) */
+.goal-controls { align-items: center; }
+.goal-core-label { display: flex; align-items: center; gap: .45rem; font-size: .82rem; font-weight: 700; color: var(--text); }
+.goal-core-label .tr-input { width: 4.5rem; flex: 0 0 auto; text-align: right; }
+.goal-table input.goal-share {
+  width: 4rem;
+  padding: .3rem .45rem;
+  border: 1px solid var(--border-2);
+  border-radius: 7px;
+  background: var(--card-2);
+  color: var(--text);
+  font-size: .8rem;
+  text-align: right;
+}
+.goal-table input.goal-share:focus { outline: none; border-color: var(--primary); }
+.goal-table .goal-move { white-space: nowrap; font-size: .72rem; }
+.goal-house { margin-top: .8rem; }
+.goal-table .move-short { display: none; }
+@media (max-width: 480px) {
+  /* Handy: "Heute" und Namen ausblenden, damit "Diesen Monat" ohne Wischen sichtbar ist */
+  .goal-table th:nth-child(2), .goal-table td:nth-child(2) { display: none; }
+  .goal-table .tr-sub { display: none; }
+  .goal-table th, .goal-table td { padding: .4rem .2rem; }
+  .goal-table input.goal-share { width: 2.7rem; padding: .3rem .3rem; }
+  .goal-table .goal-cur { display: none; }
+  #goal-out { padding: .8rem .55rem; }
+  .goal-table .goal-move { font-size: .66rem; }
+  .goal-table th { white-space: normal; font-size: .6rem; }
+  .goal-table td.num { white-space: nowrap; }
+  .goal-table .move-long { display: none; }
+  .goal-table .move-short { display: inline; }
+  .goal-move .move-short { font-size: 1rem; }
+}

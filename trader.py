@@ -9,6 +9,7 @@ Die Tools nennen ihre Felder "usd" – gemeint ist hier immer die Basiswährung.
 """
 
 import datetime as _dt
+import math
 import os
 import re
 import tempfile
@@ -45,6 +46,11 @@ DEFAULTS = {
     "blocked": [],
     "pelosi_members": ["Nancy Pelosi"],
     "pelosi_push": True,
+    # Kern-Satellit-Ziel (Ziel-Assistent): Kern-Anteil in %, Topf je Ticker
+    # ("core"/"satellite") und Anteil je Ticker innerhalb seines Topfs
+    "core_share": None,
+    "buckets": {},
+    "bucket_shares": {},
 }
 NUMBER_FIELDS = ("cash", "cash_buffer_pct", "max_position_pct", "max_order_usd",
                  "min_order_usd", "rebalance_band_pct", "max_orders_per_day")
@@ -399,18 +405,22 @@ def put_settings():
         cfg = clean_settings(request.json or {}, load_settings())
     except ValueError as e:
         return err(str(e))
+    save_settings(cfg)
+    cfg["sec_ready"] = bool(E.user_agent(None, None))
+    return jsonify(cfg)
+
+
+def save_settings(cfg):
     conn = get_db()
     cur = conn.cursor()
     cur.execute(
         """INSERT INTO trader_settings (id, config) VALUES (1, %s)
            ON CONFLICT (id) DO UPDATE SET config = EXCLUDED.config""",
-        (psycopg2.extras.Json(cfg),),
+        (psycopg2.extras.Json({k: v for k, v in cfg.items() if k in DEFAULTS}),),
     )
     conn.commit()
     cur.close()
     conn.close()
-    cfg["sec_ready"] = bool(E.user_agent(None, None))
-    return jsonify(cfg)
 
 
 @trader_bp.route("/api/trader/targets", methods=["GET"])
@@ -455,6 +465,245 @@ def targets_from_portfolio():
     return jsonify(out)
 
 
+# ── Ziel-Assistent: Kern-Satellit mit Übergangsplan ───────────────────────────
+
+# Branchen-, Themen- und Länder-ETFs gehören nach üblicher Einteilung eher zum
+# Satelliten als zum breit gestreuten Kern (nur Vorbelegung, frei änderbar).
+SATELLITE_HINTS = re.compile(
+    r"\b(nasdaq|tech\w*|semiconductors?|chips?|clean|energy|robotics?|ai|artificial|cyber\w*|cloud|"
+    r"ark|crypto|bitcoin|gold|healthcare|biotech|water|defen[cs]e|uranium)\b", re.I)
+DRIFT_DONE = 2.0     # Prozentpunkte: ab hier gilt das Ziel als erreicht
+MAX_MONTHS = 240
+
+
+def core_set(cfg):
+    return {t for t, b in (cfg.get("buckets") or {}).items() if b == "core"}
+
+
+def core_free_cfg(cfg):
+    """Mit Kern-Satellit-Ziel gilt die Obergrenze pro Titel nicht für Kern-ETFs:
+    die Tools rechnen ohne Obergrenze, cap_satellites() prüft danach nur Satelliten."""
+    return dict(cfg, max_position_pct=100.0) if core_set(cfg) else cfg
+
+
+def cap_satellites(orders, cfg, portfolio, prices, total):
+    core = core_set(cfg)
+    if not core or not total:
+        return
+    cap = float(cfg.get("max_position_pct") or 100)
+    held = {}
+    for p in portfolio["positions"]:
+        held[p["ticker"]] = held.get(p["ticker"], 0.0) + p["shares"] * prices.get(p["ticker"], 0)
+    for o in orders:
+        if o.get("side") != "buy" or o.get("symbol") in core:
+            continue
+        after = held.get(o["symbol"], 0.0) + float(o.get("value") or o.get("_usd") or 0)
+        if 100 * after / total > cap + 0.01:
+            o["verdict"] = "BLOCK"
+            o.setdefault("reasons", []).append(
+                f"Satellit-Obergrenze: {o['symbol']} wäre {100 * after / total:.1f}% des Depots, "
+                f"über deinen {cap:g}% pro Satellit-Titel")
+
+
+def default_bucket(row):
+    name = row.get("asset_name") or ""
+    if (row.get("asset_type") or "").lower() == "etf" and not SATELLITE_HINTS.search(name):
+        return "core"
+    return "satellite"
+
+
+def gap_fill(values, targets, amount):
+    """Neues Geld nur in untergewichtete Titel stecken, ohne zu verkaufen.
+
+    values/targets: {ticker: CHF} / {ticker: Zielanteil 0..1}. Füllt zuerst die
+    Lücken (proportional, falls das Geld nicht reicht); was übrig bleibt, wird
+    nach Zielgewicht verteilt. Rückgabe: {ticker: Kaufbetrag}."""
+    total_after = sum(values.values()) + amount
+    gaps = {t: max(0.0, w * total_after - values.get(t, 0.0)) for t, w in targets.items()}
+    need = sum(gaps.values())
+    if need <= 0:
+        return {t: amount * w for t, w in targets.items()}
+    if need >= amount:
+        return {t: amount * g / need for t, g in gaps.items()}
+    rest = amount - need
+    return {t: gaps[t] + rest * w for t, w in targets.items()}
+
+
+def size_by_gaps(rows, cfg, amount, portfolio, prices, whole=False):
+    """Wie size.size(), aber neues Geld geht zuerst in untergewichtete Titel.
+    Gibt dieselbe Struktur zurück, damit orders_from() und die Oberfläche gleich bleiben."""
+    buf_pct = float(cfg.get("cash_buffer_pct") or 0)
+    min_order = float(cfg.get("min_order_usd") or 0)
+    cash_buffer = round(amount * buf_pct / 100.0, 2)
+    investable = round(amount - cash_buffer, 2)
+    values = {}
+    for p in portfolio["positions"]:
+        values[p["ticker"]] = values.get(p["ticker"], 0.0) + p["shares"] * prices[p["ticker"]]
+    wsum = sum(r["weight"] for r in rows)
+    if wsum <= 0:
+        raise S.SizeError("keine Zielgewichte")
+    targets = {r["ticker"]: r["weight"] / wsum for r in rows}
+    buys = gap_fill(values, targets, investable)
+    positions, dropped = [], []
+    for r in sorted(rows, key=lambda r: -buys.get(r["ticker"], 0)):
+        t, d = r["ticker"], buys.get(r["ticker"], 0.0)
+        if d < 0.5:
+            continue
+        if d < min_order:
+            dropped.append({"ticker": t, "reason": f"nur {d:.2f}, unter deiner Mindestorder von {min_order:g}"})
+            continue
+        price = prices[t]
+        if whole:
+            n = math.floor(d / price)
+            if n < 1:
+                dropped.append({"ticker": t, "reason": f"eine Aktie kostet {price:.2f}, mehr als der Betrag"})
+                continue
+            d, shares = n * price, n
+        else:
+            d, shares = math.floor(d), round(math.floor(d) / price, 4)
+        positions.append({"ticker": t, "name": r.get("name", ""), "weight": round(100 * targets[t], 2),
+                          "source_weight": r["weight"], "dollars": round(d, 2), "capped": False,
+                          "price": price, "shares": shares})
+    invested = round(sum(p["dollars"] for p in positions), 2)
+    return {"budget": amount, "cash_buffer_pct": buf_pct, "cash_buffer": cash_buffer,
+            "investable": investable, "max_position_pct": float(cfg.get("max_position_pct") or 100),
+            "cap": None, "min_order_usd": min_order, "whole_shares": bool(whole),
+            "positions": positions, "invested": invested, "idle": round(investable - invested, 2),
+            "dropped": dropped, "mode": "gaps"}
+
+
+def plan_months(values, targets, monthly):
+    """Monate bis alle Titel höchstens DRIFT_DONE Punkte vom Ziel entfernt sind
+    (ohne Kursbewegungen gerechnet). None, wenn kein Monatsbudget."""
+    vals = dict(values)
+    for month in range(0, MAX_MONTHS + 1):
+        tot = sum(vals.values())
+        if tot and max(abs(100 * vals.get(t, 0.0) / tot - 100 * w) for t, w in targets.items()) <= DRIFT_DONE:
+            return month
+        if not monthly:
+            return None
+        for t, buy in gap_fill(vals, targets, monthly).items():
+            vals[t] = vals.get(t, 0.0) + buy
+    return None
+
+
+def build_plan(cfg, data=None):
+    """Zustand des Ziel-Assistenten: Positionen mit Topf, Anteil und Zielgewicht."""
+    pos = positions_data(cfg)
+    rows = load_portfolio_rows()
+    by_ticker = {}
+    for r in rows:
+        t = (r.get("ticker") or "").strip().upper()
+        if t:
+            by_ticker.setdefault(t, r)
+    values = {}
+    for p in pos["positions"]:
+        t = (p.get("ticker") or "").strip().upper()
+        if t and p.get("value") is not None:
+            values[t] = values.get(t, 0.0) + p["value"]
+    total = sum(values.values())
+
+    data = data or {}
+    buckets = dict(cfg.get("buckets") or {})
+    shares = dict(cfg.get("bucket_shares") or {})
+    buckets.update(data.get("buckets") or {})
+    shares.update(data.get("shares") or {})
+    core_share = data.get("core_share", cfg.get("core_share"))
+    core_share = float(core_share) if core_share not in (None, "") else 70.0
+
+    items = []
+    for t in sorted(values, key=lambda t: -values[t]):
+        b = buckets.get(t) or default_bucket(by_ticker.get(t, {}))
+        items.append({"ticker": t, "name": by_ticker.get(t, {}).get("asset_name", ""), "bucket": b,
+                      "value": round(values[t], 2), "current_pct": round(100 * values[t] / total, 2) if total else 0})
+    # Anteil im Topf: gespeichert/übergeben, sonst heutiges Verhältnis im Topf
+    for b in ("core", "satellite"):
+        group = [i for i in items if i["bucket"] == b]
+        gval = sum(i["value"] for i in group)
+        for i in group:
+            s = shares.get(i["ticker"])
+            i["share"] = float(s) if s not in (None, "") else (round(100 * i["value"] / gval, 1) if gval else 0)
+        ssum = sum(i["share"] for i in group)
+        pot = core_share if b == "core" else 100 - core_share
+        for i in group:
+            i["target_pct"] = round(pot * i["share"] / ssum, 2) if ssum else 0
+
+    notes = []
+    tsum = sum(i["target_pct"] for i in items)
+    if items and abs(tsum - 100) > 0.5:
+        empty = "Kern" if not any(i["bucket"] == "core" for i in items) else "Satellit"
+        notes.append(f"Im {empty} ist noch kein Titel. Sein Anteil fehlt im Ziel, bis du dort einen Titel einordnest "
+                     f"(im Finanzen-Tab hinzufügen und hier zuordnen).")
+    targets = {i["ticker"]: i["target_pct"] / tsum for i in items} if tsum else {}
+
+    monthly = None
+    try:
+        conn = get_db()
+        cur = conn.cursor()
+        cur.execute("SELECT monthly_budget FROM user_financial_profile WHERE id = 1")
+        row = cur.fetchone()
+        cur.close()
+        conn.close()
+        monthly = float(row[0]) if row and row[0] else None
+    except Exception:
+        pass
+
+    core_now = sum(i["value"] for i in items if i["bucket"] == "core")
+    buys = gap_fill(values, targets, monthly) if (monthly and targets) else {}
+    for i in items:
+        i["buy"] = round(buys.get(i["ticker"], 0.0), 2)
+    return {
+        "currency": pos["currency"], "total": round(total, 2), "monthly": monthly,
+        "core_share": core_share, "core_now_pct": round(100 * core_now / total, 1) if total else 0,
+        "months": plan_months(values, targets, monthly) if targets else None,
+        "items": items, "notes": notes + [f"Kein Kurs für {m}: nicht im Plan." for m in pos["missing"]],
+        "saved": cfg.get("core_share") is not None,
+    }
+
+
+@trader_bp.route("/api/trader/plan", methods=["GET", "POST"])
+def get_plan():
+    """GET: gespeicherter Plan. POST: Vorschau mit geänderten Werten (ohne zu speichern)."""
+    data = request.json if request.method == "POST" else None
+    try:
+        return jsonify(build_plan(load_settings(), data))
+    except (TypeError, ValueError):
+        return err("Ungültige Zahl im Plan.")
+
+
+@trader_bp.route("/api/trader/plan", methods=["PUT"])
+def put_plan():
+    """Speichert Kern-Anteil, Töpfe und Anteile und schreibt daraus die Zielgewichte."""
+    data = request.json or {}
+    try:
+        core_share = float(str(data.get("core_share")).replace(",", "."))
+    except (TypeError, ValueError):
+        return err("Kern-Anteil ist keine Zahl.")
+    if not 0 <= core_share <= 100:
+        return err("Kern-Anteil muss zwischen 0 und 100 % liegen.")
+    buckets = {str(t).upper(): ("core" if b == "core" else "satellite") for t, b in (data.get("buckets") or {}).items()}
+    shares = {}
+    for t, s in (data.get("shares") or {}).items():
+        try:
+            v = float(str(s).replace("'", "").replace(",", "."))
+        except ValueError:
+            return err(f"Anteil für {t} ist keine Zahl.")
+        if v < 0:
+            return err(f"Anteil für {t} darf nicht negativ sein.")
+        shares[str(t).upper()] = v
+    cfg = load_settings()
+    cfg.update(core_share=core_share, buckets=buckets, bucket_shares=shares)
+    plan = build_plan(cfg)
+    rows = [{"ticker": i["ticker"], "name": i["name"], "weight": i["target_pct"]}
+            for i in plan["items"] if i["target_pct"] > 0]
+    if not rows:
+        return err("Das Ziel ist leer: ordne mindestens einem Titel einen Anteil zu.")
+    save_settings(cfg)
+    save_targets(rows, f"Kern-Satellit {core_share:g}/{100 - core_share:g}")
+    plan["saved"] = True
+    return jsonify(plan)
+
+
 # ── Rebalancing ───────────────────────────────────────────────────────────────
 
 @trader_bp.route("/api/trader/rebalance", methods=["POST"])
@@ -476,8 +725,9 @@ def rebalance():
     if not weights:
         return err("Für keinen Ziel-Ticker gibt es einen Kurs.")
     band = data.get("band")
+    pcfg = core_free_cfg(cfg)
     try:
-        res = R.plan(portfolio, prices, weights, cfg,
+        res = R.plan(portfolio, prices, weights, pcfg,
                      band=float(band) if band not in (None, "") else None,
                      sell_untracked=bool(data.get("sell_untracked")))
     except (R.RebalanceError, ValueError) as e:
@@ -485,7 +735,10 @@ def rebalance():
     tnames = {t["ticker"]: t.get("name") for t in targets}
     for row in res["rows"]:
         row["name"] = names.get(row["ticker"]) or tnames.get(row["ticker"]) or ""
-    risk = risk_check(res["orders"], cfg, portfolio, prices) if res["orders"] else {"warnings": []}
+    risk = risk_check(res["orders"], pcfg, portfolio, prices) if res["orders"] else {"warnings": []}
+    cap_satellites(res["orders"], cfg, portfolio, prices, res["account_value"])
+    if pcfg is not cfg:
+        notes.append(f"Die Obergrenze von {cfg['max_position_pct']:g} % pro Titel gilt nur für Satellit-Titel.")
     res["notes"] = notes + res["notes"] + risk.get("warnings", [])
     res["currency"] = cfg["base_currency"]
     return jsonify(in_currency(res, cfg["base_currency"]))
@@ -513,8 +766,13 @@ def budget():
         if t["ticker"] not in prices:
             notes.append(f"Kein Kurs für {t['ticker']}: wird nicht gekauft.")
     whole = bool(data.get("whole_shares")) or not cfg.get("fractional", True)
+    pcfg = core_free_cfg(cfg)
     try:
-        res = S.size(rows, cfg, budget=amount, prices=prices, whole=whole)
+        if core_set(cfg):
+            # Kern-Satellit-Ziel: zuerst die Lücken füllen (wie der Übergangsplan)
+            res = size_by_gaps(rows, cfg, amount, portfolio, prices, whole)
+        else:
+            res = S.size(rows, pcfg, budget=amount, prices=prices, whole=whole)
     except S.SizeError as e:
         return err(str(e))
     orders = S.orders_from(res)
@@ -524,8 +782,9 @@ def budget():
     # ist der Budget-Puffer, nicht ein Prozentsatz des ganzen Depots.
     acct = dict(portfolio, cash=portfolio["cash"] + amount)
     total = acct["cash"] + sum(p["shares"] * prices[p["ticker"]] for p in acct["positions"])
-    rcfg = dict(cfg, cash_buffer_pct=100.0 * (res["cash_buffer"] + portfolio["cash"]) / total if total else 0)
+    rcfg = dict(pcfg, cash_buffer_pct=100.0 * (res["cash_buffer"] + portfolio["cash"]) / total if total else 0)
     risk = risk_check(orders, rcfg, acct, prices) if orders else {"warnings": []}
+    cap_satellites(orders, cfg, portfolio, prices, total)
     for p in res["positions"]:
         p["name"] = p.get("name") or names.get(p["ticker"], "")
     res["orders"] = orders
