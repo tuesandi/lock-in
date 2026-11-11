@@ -542,7 +542,13 @@
       if (!isNaN(v)) shares[el.dataset.t] = v;
     });
     const core = parseNum($("goal-core").value);
-    return { core_share: isNaN(core) ? (goal ? goal.core_share : 70) : core, buckets, shares };
+    const sat = parseNum($("goal-sat-monthly").value);
+    const tp = parseNum($("goal-take-profit").value);
+    return {
+      core_share: isNaN(core) ? (goal ? goal.core_share : 70) : core, buckets, shares,
+      satellite_monthly: isNaN(sat) ? 0 : sat,
+      take_profit_pct: isNaN(tp) || tp <= 0 ? "" : tp,
+    };
   }
 
   async function loadGoal(preview) {
@@ -560,6 +566,8 @@
   function renderGoal() {
     const g = goal;
     if (document.activeElement !== $("goal-core")) $("goal-core").value = num(g.core_share, 0);
+    if (document.activeElement !== $("goal-sat-monthly")) $("goal-sat-monthly").value = g.satellite_monthly ? String(g.satellite_monthly) : "";
+    if (document.activeElement !== $("goal-take-profit")) $("goal-take-profit").value = g.take_profit_pct ? String(g.take_profit_pct) : "";
     $("goal-sat-label").textContent = `Satellit: ${num(100 - g.core_share, 0)} %`;
     if (!g.items.length) {
       $("goal-out").innerHTML = '<div class="analysis-para">Noch keine Positionen mit Kurs. Trag oben zuerst deine Positionen ein.</div>';
@@ -589,12 +597,14 @@
     $("goal-out").innerHTML = `
       <div class="tr-summary">
         <div class="tr-stat"><b>${num(g.core_now_pct, 0)} % → ${num(g.core_share, 0)} %</b><span>Kern heute → Ziel</span></div>
-        <div class="tr-stat"><b>${g.monthly ? money(g.monthly) : "–"}</b><span>pro Monat</span></div>
+        <div class="tr-stat"><b>${g.monthly ? money(g.monthly) : "–"}</b><span>pro Monat${g.satellite_monthly ? ` · ${num(g.satellite_monthly, 0)} frei` : ""}</span></div>
         <div class="tr-stat"><b>${months}</b><span>bis zum Ziel</span></div>
       </div>
       ${g.monthly ? "" : '<div class="analysis-error">Trag unter „Profil &amp; Regeln" dein Budget pro Monat ein, dann rechnet der Plan aus, was du wann kaufst.</div>'}
+      ${takeProfitHtml(g)}
       ${group("core", "Kern", g.core_share)}
       ${group("satellite", "Satellit", 100 - g.core_share)}
+      ${g.satellite_monthly ? `<div class="rec-line rec-buy goal-free">🎯 ${money(g.satellite_monthly)} frei für den Satelliten – du entscheidest, in welchen Titel (z.B. nachkaufen nach einem Rückgang oder etwas Neues).</div>` : ""}
       ${notesList((g.notes || []).concat([
         "„Anteil im Kern/Satellit\" teilt den Topf unter seinen Titeln auf; vorbelegt mit dem heutigen Verhältnis.",
         "„Diesen Monat\" verteilt dein Monatsbudget nur auf Titel unter ihrem Ziel – ohne Verkäufe. Gerechnet ohne Kursschwankungen.",
@@ -613,6 +623,25 @@
         loadGoal(s);
       }));
   }
+
+  function takeProfitHtml(g) {
+    if (!g.take_profit_pct) return "";
+    if (!g.take_profit.length) {
+      return `<div class="analysis-para goal-tp-none">Kein Satellit-Titel liegt aktuell ${num(g.take_profit_pct, 0)} % oder mehr über deinem Kaufpreis.</div>`;
+    }
+    return `<div class="tr-section-title">Gewinnmitnahme möglich (ab +${num(g.take_profit_pct, 0)} %)</div>
+      ${g.take_profit.map((h) => `<div class="rec-line rec-hold">
+        <strong>${esc(h.ticker)}</strong> liegt <strong>+${num(h.gain_pct, 1)} %</strong> über deinem Kaufpreis.
+        Gewinn ca. ${money(h.profit)} – verkaufen und ${h.into ? `in den Kern (z.B. <strong>${esc(h.into)}</strong>, grösste Lücke)` : "in den Kern"} stecken?
+        Dein Einsatz bleibt investiert. Du entscheidest.</div>`).join("")}`;
+  }
+
+  ["goal-sat-monthly", "goal-take-profit"].forEach((id) =>
+    $(id).addEventListener("change", (e) => {
+      if (!markNumField(e.target)) return;
+      goalDirty = true;
+      loadGoal(goalState());
+    }));
 
   $("goal-core").addEventListener("change", (e) => {
     if (!markNumField(e.target)) return;

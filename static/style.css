@@ -1269,3 +1269,5 @@ input.invalid { border-color: var(--danger) !important; box-shadow: 0 0 0 1px va
   .goal-table .move-short { display: inline; }
   .goal-move .move-short { font-size: 1rem; }
 }
+.goal-free { margin-top: .6rem; font-weight: 600; }
+.goal-tp-none { margin: .2rem 0 .4rem; }

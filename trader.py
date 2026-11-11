@@ -51,6 +51,8 @@ DEFAULTS = {
     "core_share": None,
     "buckets": {},
     "bucket_shares": {},
+    "satellite_monthly": 0.0,    # vom Monatsbudget immer frei für den Satelliten
+    "take_profit_pct": None,     # Hinweis auf Gewinnmitnahme ab +X % (None = aus)
 }
 NUMBER_FIELDS = ("cash", "cash_buffer_pct", "max_position_pct", "max_order_usd",
                  "min_order_usd", "rebalance_band_pct", "max_orders_per_day")
@@ -474,6 +476,7 @@ SATELLITE_HINTS = re.compile(
     r"ark|crypto|bitcoin|gold|healthcare|biotech|water|defen[cs]e|uranium)\b", re.I)
 DRIFT_DONE = 2.0     # Prozentpunkte: ab hier gilt das Ziel als erreicht
 MAX_MONTHS = 240
+MIN_TAKE_PROFIT = 20.0   # in Basiswährung
 
 
 def core_set(cfg):
@@ -572,19 +575,55 @@ def size_by_gaps(rows, cfg, amount, portfolio, prices, whole=False):
             "dropped": dropped, "mode": "gaps"}
 
 
-def plan_months(values, targets, monthly):
+def plan_months(values, targets, monthly, free_sat=0.0, satellites=()):
     """Monate bis alle Titel höchstens DRIFT_DONE Punkte vom Ziel entfernt sind
-    (ohne Kursbewegungen gerechnet). None, wenn kein Monatsbudget."""
+    (ohne Kursbewegungen gerechnet). None, wenn kein Monatsbudget.
+
+    monthly: Geld, das der Plan verteilt. free_sat: freies Satellit-Budget, das
+    in der Rechnung wie nach Zielgewicht auf die Satelliten verteilt wird."""
     vals = dict(values)
+    sat_w = {t: targets[t] for t in satellites if t in targets}
+    sat_sum = sum(sat_w.values())
     for month in range(0, MAX_MONTHS + 1):
         tot = sum(vals.values())
         if tot and max(abs(100 * vals.get(t, 0.0) / tot - 100 * w) for t, w in targets.items()) <= DRIFT_DONE:
             return month
-        if not monthly:
+        if not monthly and not free_sat:
             return None
-        for t, buy in gap_fill(vals, targets, monthly).items():
-            vals[t] = vals.get(t, 0.0) + buy
+        if monthly:
+            for t, buy in gap_fill(vals, targets, monthly).items():
+                vals[t] = vals.get(t, 0.0) + buy
+        if free_sat and sat_sum:
+            for t, w in sat_w.items():
+                vals[t] = vals.get(t, 0.0) + free_sat * w / sat_sum
     return None
+
+
+def take_profit_hints(pos, satellites, threshold, core_items):
+    """Satellit-Titel, die mindestens threshold % über dem Kaufpreis liegen:
+    Vorschlag, den Gewinnteil zu verkaufen und in den Kern zu stecken."""
+    if not threshold:
+        return []
+    agg = {}
+    for p in pos["positions"]:
+        t = (p.get("ticker") or "").strip().upper()
+        if t in satellites and p.get("value") is not None:
+            a = agg.setdefault(t, {"ticker": t, "name": p["asset_name"], "value": 0.0, "cost": 0.0})
+            a["value"] += p["value"]
+            a["cost"] += p.get("cost") or 0.0
+    # Ziel für den Erlös: der Kern-Titel mit der grössten Lücke zu seinem Ziel
+    gap_target = max(core_items, key=lambda i: i["target_pct"] - i["current_pct"], default=None)
+    hints = []
+    for a in agg.values():
+        if a["cost"] <= 0:
+            continue
+        gain_pct = 100 * (a["value"] - a["cost"]) / a["cost"]
+        # Kleinstgewinne nicht anzeigen: die Handelsgebühr wäre höher als der Gewinn
+        if gain_pct >= threshold and a["value"] - a["cost"] >= MIN_TAKE_PROFIT:
+            hints.append({"ticker": a["ticker"], "name": a["name"], "gain_pct": round(gain_pct, 1),
+                          "profit": round(a["value"] - a["cost"], 2),
+                          "into": gap_target["ticker"] if gap_target else None})
+    return sorted(hints, key=lambda h: -h["profit"])
 
 
 def build_plan(cfg, data=None):
@@ -648,14 +687,28 @@ def build_plan(cfg, data=None):
     except Exception:
         pass
 
+    def num_opt(key):
+        v = data.get(key, cfg.get(key))
+        if v in (None, ""):
+            return None
+        return float(str(v).replace("'", "").replace(",", "."))
+
+    satellites = {i["ticker"] for i in items if i["bucket"] == "satellite"}
+    free_sat = min(num_opt("satellite_monthly") or 0.0, monthly or 0.0)
+    take_profit = num_opt("take_profit_pct")
+    plan_money = (monthly or 0.0) - free_sat
+
     core_now = sum(i["value"] for i in items if i["bucket"] == "core")
-    buys = gap_fill(values, targets, monthly) if (monthly and targets) else {}
+    buys = gap_fill(values, targets, plan_money) if (plan_money > 0 and targets) else {}
     for i in items:
         i["buy"] = round(buys.get(i["ticker"], 0.0), 2)
     return {
         "currency": pos["currency"], "total": round(total, 2), "monthly": monthly,
+        "satellite_monthly": free_sat, "plan_money": round(plan_money, 2), "take_profit_pct": take_profit,
         "core_share": core_share, "core_now_pct": round(100 * core_now / total, 1) if total else 0,
-        "months": plan_months(values, targets, monthly) if targets else None,
+        "months": plan_months(values, targets, plan_money, free_sat, satellites) if targets else None,
+        "take_profit": take_profit_hints(pos, satellites, take_profit,
+                                         [i for i in items if i["bucket"] == "core"]),
         "items": items, "notes": notes + [f"Kein Kurs für {m}: nicht im Plan." for m in pos["missing"]],
         "saved": cfg.get("core_share") is not None,
     }
@@ -691,8 +744,21 @@ def put_plan():
         if v < 0:
             return err(f"Anteil für {t} darf nicht negativ sein.")
         shares[str(t).upper()] = v
+    extra = {}
+    for key, label in (("satellite_monthly", "Satellit-Budget"), ("take_profit_pct", "Gewinnmitnahme-Schwelle")):
+        raw = data.get(key)
+        if raw in (None, ""):
+            extra[key] = 0.0 if key == "satellite_monthly" else None
+            continue
+        try:
+            v = float(str(raw).replace("'", "").replace(",", "."))
+        except ValueError:
+            return err(f"{label} ist keine Zahl.")
+        if v < 0:
+            return err(f"{label} darf nicht negativ sein.")
+        extra[key] = v if v > 0 or key == "satellite_monthly" else None
     cfg = load_settings()
-    cfg.update(core_share=core_share, buckets=buckets, bucket_shares=shares)
+    cfg.update(core_share=core_share, buckets=buckets, bucket_shares=shares, **extra)
     plan = build_plan(cfg)
     rows = [{"ticker": i["ticker"], "name": i["name"], "weight": i["target_pct"]}
             for i in plan["items"] if i["target_pct"] > 0]
